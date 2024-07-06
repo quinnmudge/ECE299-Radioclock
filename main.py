@@ -13,70 +13,14 @@ B_rising_edge = False
 B_falling_edge = False
 rotation_direction = 0  # 1 for clockwise, -1 for counterclockwise
 
-
-
-
-frequency = 101.9
-
-
-volume = 4
+current_posx = 1
+current_posy = 0
 # Interrupt handler for EncoderA pin
-def EncoderAInterrupt(pin):
-    global A_state, A_rising_edge, A_falling_edge, rotation_direction
-    
-    # Read current state of EncoderA and EncoderB pins
-    A_state = EncoderA.value()
-    B_state = EncoderB.value()
-    
-    # Determine edge detection on EncoderA
-    if A_state == 1 and B_state == 0:
-        A_rising_edge = True
-    elif A_state == 0 and B_state == 1:
-        A_falling_edge = True
-    
-    # Check for both rising and falling edges on EncoderA
-    if A_rising_edge and A_falling_edge:
-        if A_state != B_state:
-            return "Clockwise"
-        else:
-            return "Counter"
-        
-        # Reset edge detection flags
-        A_rising_edge = False
-        A_falling_edge = False
-        
-# Interrupt handler for EncoderB pin (optional, if needed)
-def EncoderBInterrupt(pin):
-    global B_state, B_rising_edge, B_falling_edge, rotation_direction
-    
-    # Read current state of EncoderA and EncoderB pins
-    A_state = EncoderA.value()
-    B_state = EncoderB.value()
-    
-    # Determine edge detection on EncoderB
-    if B_state == 1 and A_state == 0:
-        B_rising_edge = True
-    elif B_state == 0 and A_state == 1:
-        B_falling_edge = True
-    
-    # Check for both rising and falling edges on EncoderB
-    if B_rising_edge and B_falling_edge:
-        if A_state == B_state:
-            return "Clockwise"
-        else:
-            return "Counter"
-        
-        # Reset edge detection flags
-        B_rising_edge = False
-        B_falling_edge = False
 
-# Attach interrupt handlers to EncoderA and EncoderB pins
-EncoderA.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=EncoderAInterrupt, hard = True)
-EncoderB.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=EncoderBInterrupt, hard = True)
 grid_size_x = 42
 grid_size_y = 10
 ENTER = False
-DEBOUNCE_DELAY_MS = 100
+DEBOUNCE_DELAY_MS = 50
 
 # Define button pins
 button_1 = Pin(13, Pin.IN, Pin.PULL_DOWN)  # Button for moving left
@@ -94,7 +38,7 @@ class Radio:
 # set the initial values of the radio
 #
         self.Volume = 2
-        self.Frequency = 88
+        self.Frequency = 101.9
         self.Mute = False
 #
 # Update the values with the ones passed in the initialization code
@@ -274,8 +218,7 @@ class Button(Icon):
 
 class Display:
     def __init__(self, width, height):
-        self.current_posx = 1
-        self.current_posy = 0
+       
         self.spi_sck = Pin(18)
         self.spi_sda = Pin(19)
         self.spi_res = Pin(16)
@@ -288,94 +231,219 @@ class Display:
         self.SSD.show()
         
     def update_buttons(self, icons):
+        global current_state, ENTER, current_posx, current_posy
+       
         for icon in icons:
             if isinstance(icon, Button):
-                if icon.grid_x == self.current_posx and icon.grid_y == self.current_posy:
+                if icon.grid_x == current_posx and icon.grid_y == current_posy:
                     icon.selected = True
+                    if(ENTER and icon.state):
+                         current_state = icon.state
+                         current_posx = current_state.start_posx
+                         current_posy = current_state.start_posy
+                         button_1.irq(handler=current_state.B1Handler, trigger=Pin.IRQ_FALLING)
+                         button_2.irq(handler=current_state.B2Handler, trigger=Pin.IRQ_FALLING)
+                         self.render(current_state.icons)
+                         ENTER=False
                 else:
                     icon.selected = False
-               
+            
     def render(self, icons):
-        global ENTER, current_state
-        self.update_buttons(icons)
+        global current_state
         self.SSD.fill(0)
         for icon in icons:
-            if isinstance(icon, Button) and icon.selected:
+            if isinstance(icon, Button) and icon.selected:   
                 self.SSD.fill_rect(icon.xpos_text - 2, icon.ypos_text - 2, icon.width, icon.height, 1)
-                if ENTER and icon.state:
-                    print("in")
-                    print(icon.state)
-                    current_state = icon.state  # Update current_state
-                    
-                    print(current_state)
-                    ENTER = False  # Reset ENTER flag after handling
             else:
                 self.SSD.text(icon.text, icon.xpos_text, icon.ypos_text)
                 if icon.has_border:
                     self.SSD.rect(icon.xpos_text - 2, icon.ypos_text - 2, icon.width, icon.height, 1)
+                    pass
         self.SSD.show()
 
 class State:
     def __init__(self):
-        self.display = Display(128, 64)
+        global display
+        self.display = display
+    def B1Handler(pin):
+        pass
+    def B2Handler(pin):
+        pass
 
 class ClockState(State):
     def __init__(self, hour, minute):
         super().__init__()  # Initialize superclass Display
         self.current_hour = hour
         self.current_minute = minute
+        self.start_posx = 10
+        self.start_posy = 10
         #format clock string properly
         str_num = '{:02d}'.format(self.current_minute)
-        clock = Icon((str(self.current_hour) + ":" + str_num),1,3,False)
+        self.clock = Icon((str(self.current_hour) + ":" + str_num),1,3,False)
         #add our clock icon to the list of icons to be displayed by the display
-        self.icons = [clock]
-    def render(self):
-        self.display.render(self.icons)
+        self.icons = [self.clock]
+    def update(self):
+        self.icons = [self.clock]
+        display.update_buttons(self.icons)
+    def B1Handler(self,pin):
+         if debounce_handler(pin):
+            display.render(self.icons)
+    def B2Handler(self,pin):
+        if debounce_handler(pin):
+            display.render(self.icons)
         
 
 class RadioState(State):
     def __init__(self):
         super().__init__()
-        global frequency, radio
-        _, _, frequency, _ = radio.GetSettings()
-        self.frequency = Icon(str(frequency), 1, 3, True)
-        self.icons = [self.frequency]
-
-    def tune(self, pin):
-        global rotation_direction, frequency,radio
-        direction = EncoderAInterrupt(pin)
-        if direction == "Clockwise":
-            frequency += 0.1
-        elif direction == "Counter":
-            frequency -= 0.1
-        if(radio.SetFrequency(frequency) ==True):
-            radio.ProgramRadio()
-        # Update the frequency displayed on the icon
-
-    def render(self):
-        global frequency
-        self.frequency.text = f"{frequency:.1f}"
-        self.display.render(self.icons)
+        global radio, Menu_s
+        #_, _, frequency, _ = radio.GetSettings()
+        self.freq = 101.9
+        self.volume = 4
+        self.frequ_disp = Button(str(self.freq), 1, 3,False, True)
+        self.menu = Button("Menu",0,5,True,True)
+        self.menu.configureState(Menu_s)
+        self.vol_adj = Button("Vol.",1,5,False,True)
+        self.vol_disp = Icon(str(self.volume),0,1,False)
+        self.freq_adj = Button("Freq.",2,5,False,True)
+        self.icons = [self.frequ_disp, self.menu, self.vol_adj, self.freq_adj,self.vol_disp]
+        self.start_posx = 0
+        self.start_posy = 5
+   
+    def update(self):
+        self.menu.configureState(Menu_s)
+        display.update_buttons(self.icons)
+    def RadioENCA(self,pin):
+        global A_state, A_rising_edge, A_falling_edge, rotation_direction, radio
+        print("in")
+        # Read current state of EncoderA and EncoderB pins
+        A_state = EncoderA.value()
+        B_state = EncoderB.value()
         
+        # Determine edge detection on EncoderA
+        if A_state == 1 and B_state == 0:
+            A_rising_edge = True
+        elif A_state == 0 and B_state == 1:
+            A_falling_edge = True
         
+        # Check for both rising and falling edges on EncoderA
+        if A_rising_edge and A_falling_edge:
+            if A_state != B_state:
+                if(self.freq_adj.selected):
+                    if(radio.SetFrequency(self.freq +0.1) ==True):
+                       self.freq +=0.1
+                       radio.ProgramRadio()
+                    # Update the frequency displayed on the icon
+                       self.frequ_disp.text = f"{self.freq:.1f}"
+                       display.render(self.icons)
+                if(self.vol_adj.selected):
+                    if ( radio.SetVolume(self.volume+1 ) == True ):
+                        radio.ProgramRadio()
+                        self.volume+=1
+                        self.vol_disp.text = str(self.volume)
+                        display.render(self.icons)
+            else:
+               pass
+            
+            # Reset edge detection flags
+            A_rising_edge = False
+            A_falling_edge = False
+            
+    # Interrupt handler for EncoderB pin (optional, if needed)
+    def RadioENCB(self,pin):
+        global B_state, B_rising_edge, B_falling_edge, rotation_direction, radio
+        # Read current state of EncoderA and EncoderB pins
+        A_state = EncoderA.value()
+        B_state = EncoderB.value()
         
+        # Determine edge detection on EncoderB
+        if B_state == 1 and A_state == 0:
+            B_rising_edge = True
+        elif B_state == 0 and A_state == 1:
+            B_falling_edge = True
+        
+        # Check for both rising and falling edges on EncoderB
+        if B_rising_edge and B_falling_edge:
+            if A_state == B_state:
+                pass
+                
+            else:
+                if(self.freq_adj.selected):
+                    if(radio.SetFrequency(self.freq-0.1) ==True):
+                        self.freq-=0.1
+                        radio.ProgramRadio()
+                    # Update the frequency displayed on the icon
+                        self.frequ_disp.text = f"{self.freq:.1f}"
+                        display.render(self.icons)
+                if(self.vol_adj.selected):
+                    if ( radio.SetVolume( self.volume-1 ) == True ):
+                            radio.ProgramRadio()
+                            self.volume-=1
+                            self.vol_disp.text = str(self.volume)
+                            display.render(self.icons)
+                
+            # Reset edge detection flags
+            B_rising_edge = False
+            B_falling_edge = False
+ 
+    def B1Handler(self,pin):
+        global current_posx
+        if debounce_handler(pin):
+            current_posx +=1
+            if(current_posx>2):
+                current_posx = 2
+            self.update()
+        
+            display.render(self.icons)
+           
+    def B2Handler(self,pin):
+        global current_posx
+        if debounce_handler(pin):
+            current_posx-=1
+            if(current_posx<0):
+                current_posx = 0
+            self.update()
+            display.render(self.icons)
+            
+      
 class AlarmState(State):
-    def render(self):
-        print("Alarm")
+      def update(self):
+        self.icons = []
+        display.update_buttons(self.icons)
+
         
 class MainMenuState(State):
     def __init__(self):
         super().__init__()
+        global icons
         self.clock_but = Button("CLOCK", 1, 0, True, True)
         self.radio_but = Button("RADIO", 1, 2, False, True)
         self.alarm_but = Button("ALARM", 1, 4, False, True)
-        self.clock_but.configureState(ClockState(12,1))
-        self.radio_but.configureState(RadioState())
-        self.alarm_but.configureState(AlarmState())
-        self.menu = [self.radio_but, self.alarm_but, self.clock_but]
-
-    def render(self):
-        self.display.render(self.menu)
+        self.clock_but.configureState(Clock_s)
+        self.radio_but.configureState(Radio_s)
+        self.alarm_but.configureState(Alarm_s)
+        self.icons = [self.radio_but, self.alarm_but, self.clock_but]
+        self.start_posx = 1
+        self.start_posy = 0
+        display.render(self.icons)
+    def update(self):
+        display.update_buttons(self.icons)
+    def B1Handler(self,pin):
+         global current_state, current_posy
+         if debounce_handler(pin):
+            current_posy -= 2
+            if(current_posy<0):
+                current_posy = 0
+            self.update()
+            display.render(self.icons)
+    def B2Handler(self,pin):
+        global current_state, current_posy
+        if debounce_handler(pin):
+            current_posy += 2
+            if(current_posy >4):
+                current_posy = 4
+            self.update()
+            display.render(self.icons)
 
 def debounce_handler(pin):
     global last_pressed_time
@@ -385,35 +453,43 @@ def debounce_handler(pin):
     last_pressed_time = current_time
     return pin.value() == 0  # Check if button is pressed
 
-def B1_MainMenuHandler(pin):
-    global current_state
-    if debounce_handler(pin):
-        current_state.display.current_posy -= 2
-
-def B2_MainMenuHandler(pin):
-    global current_state
-    if debounce_handler(pin):
-        current_state.display.current_posy += 2
 
 def Enter_Handler(pin):
-    global ENTER
-    ENTER = True
+    global ENTER, current_state
+    if debounce_handler(pin):
+        ENTER = True
 
 class ClockRadio:
     def __init__(self):
-        Radios= RadioState()
-        button_1.irq(handler=B1_MainMenuHandler, trigger=Pin.IRQ_FALLING)
-        button_2.irq(handler=B2_MainMenuHandler, trigger=Pin.IRQ_FALLING)
-        EncoderA.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=Radios.tune)
+        global Radio_s, current_state
+        button_1.irq(handler=current_state.B1Handler, trigger=Pin.IRQ_FALLING)
+        button_2.irq(handler=current_state.B2Handler, trigger=Pin.IRQ_FALLING)
+        EncoderA.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=Radio_s.RadioENCA)
+        EncoderB.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=Radio_s.RadioENCB)
         enter.irq(handler=Enter_Handler, trigger=Pin.IRQ_FALLING)
 
     def update(self, state):
-        state.render()
-        
-radio = Radio(101.9, 2, False)
+        state.update()
+        pass
+     
+    
+display = Display(128,64)
+
+radio = Radio(100.3, 15, False)
+Menu_s =None
+
+Clock_s = ClockState(12,1)
+Alarm_s = AlarmState()
+
+Radio_s = RadioState()
+Menu_s = MainMenuState()
+#define states used by the clock radio before the clock radio
+current_state = Menu_s
 clock_radio = ClockRadio()
-current_state = MainMenuState()
+
+
 
 while True:
     clock_radio.update(current_state)
+    
 

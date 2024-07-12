@@ -298,9 +298,11 @@ class State:
         pass
 class ClockState(State):
     def __init__(self):
+        global Alarm_s
         super().__init__()  # Initialize superclass Display
         self.menu = Button("Menu",0,5,True,True)
         self.menu.configureState(Menu_s)
+        self.Alarm_on = Icon("Al: " +Alarm_s.is_on,2,0,False)
         self.hour_adj = Button("Hr.",1,5,False,True)
         self.min_adj = Button("Min",2,5,False,True)
         self.format_time = "12h"
@@ -311,7 +313,7 @@ class ClockState(State):
         self.start_posy = 5
         self.clock = Icon("", 1, 3, False)  # Placeholder for the clock icon
         self.update_time()  # Initialize the clock display
-        self.icons = [self.clock, self.menu, self.hour_adj, self.min_adj,self.format_adj,self.time_zone]
+        self.icons = [self.clock, self.menu, self.hour_adj, self.min_adj,self.format_adj,self.time_zone,self.Alarm_on]
         # Timer setup for minute update
         self.timer = Timer()
         self.timer.init(period=60000, mode=Timer.PERIODIC, callback=self.timer_callback)
@@ -339,6 +341,7 @@ class ClockState(State):
         self.clock.text = clock_text
     def update(self):
         self.menu.configureState(Menu_s)
+        self.Alarm_on.text = "Al: " +Alarm_s.is_on
         display.update_buttons(self.icons)
     def timer_callback(self, timer):
         global current_state
@@ -856,6 +859,7 @@ def Enter_Handler(pin):
     global ENTER, current_state
     if debounce_handler(pin):
         ENTER = True
+        
 def change_state(state):
     global current_state, current_posx, current_posy
     current_state = state
@@ -883,14 +887,16 @@ class ClockRadio:
     
 display = Display(128,64)
 
-radio = Radio(101.9, 15, False)
+radio = Radio(101.9, 3, False)
 radio.SetMute(True)
 radio.ProgramRadio()
 Menu_s = None
 
+Clock_s = State()
+Alarm_s = AlarmState()
 Clock_s = ClockState()
 
-Alarm_s = AlarmState()
+
 
 Radio_s = RadioState()
 Menu_s = MainMenuState()
@@ -901,7 +907,7 @@ Playalarm_s = PlayALARM()
 
 def check_for_alarm():
     global current_state, current_posx, current_posy, Playalarm_s
-    if(Alarm_s.alarm_hour==rtc.datetime()[4] and Alarm_s.alarm_minute == rtc.datetime()[5]):
+    if(Alarm_s.alarm_hour==rtc.datetime()[4] and Alarm_s.alarm_minute == rtc.datetime()[5] and Alarm_s.is_on=="Y"):
         change_state(Playalarm_s)
 while True:
     clock_radio.update(current_state)

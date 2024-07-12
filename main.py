@@ -1,4 +1,4 @@
-from machine import Pin, SPI, I2C
+from machine import Pin, SPI, I2C, RTC, Timer, PWM
 import ssd1306
 import utime
 EncoderA = machine.Pin(27, machine.Pin.IN, machine.Pin.PULL_UP)
@@ -20,7 +20,8 @@ current_posy = 0
 grid_size_x = 42
 grid_size_y = 10
 ENTER = False
-DEBOUNCE_DELAY_MS = 50
+LAST_ENTER = False
+DEBOUNCE_DELAY_MS = 100
 
 # Define button pins
 button_1 = Pin(13, Pin.IN, Pin.PULL_DOWN)  # Button for moving left
@@ -31,21 +32,13 @@ enter = Pin(11, Pin.IN, Pin.PULL_DOWN)     # Button for enter
 last_pressed_time = 0
 debounce_delay = DEBOUNCE_DELAY_MS // 2  # Adjusted for non-blocking debounce
 
-
-def debounce_handler(pin):
-    global last_pressed_time
-    current_time = utime.ticks_ms()
-    if current_time - last_pressed_time < debounce_delay:
-        return False
-    last_pressed_time = current_time
-    return pin.value() == 0  # Check if button is pressed
-
-
-def Enter_Handler(pin):
-    global ENTER, current_state
-    if debounce_handler(pin):
-        ENTER = True
-
+# RTC Setup
+rtc = RTC()
+rtc.datetime((2024, 7, 10, 0, 0, 0, 0, 0))  # Set initial RTC time (year, month, day, weekday, hours, minutes, seconds, subseconds)
+SNOOZE = False
+EXIT = False
+snooze_timer = 0
+# Clock State Class
 
 class Radio:
     
@@ -191,11 +184,14 @@ class Radio:
 # After and address of 255 the 
 #
         self.RadioStatus = self.radio_i2c.readfrom( self.i2c_device_address, 256 )
+
         if (( self.RadioStatus[0xF0] & 0x40 ) != 0x00 ):
             MuteStatus = False
         else:
             MuteStatus = True
+            
         VolumeStatus = self.RadioStatus[0xF7] & 0x0F
+ 
  #
  # Convert the frequency 10 bit count into actual frequency in Mhz
  #
@@ -208,15 +204,6 @@ class Radio:
             StereoStatus = False
         
         return( MuteStatus, VolumeStatus, FrequencyStatus, StereoStatus )
-    
- class Alarm:
-    #class to implement the alarm functionality
-    def __init__(self):
-        self.On = False
-class Clock:
-    #class to implement the clock functionality
-    def __init__(self):
-        pass
     
     
 class Icon:
@@ -241,51 +228,60 @@ class Button(Icon):
 
 class Display:
     def __init__(self, width, height):
-       
         self.spi_sck = Pin(18)
         self.spi_sda = Pin(19)
         self.spi_res = Pin(16)
-        self.spi_dc  = Pin(17)
-        self.spi_cs  = Pin(20)
+        self.spi_dc = Pin(17)
+        self.spi_cs = Pin(20)
         SPI_DEVICE = 0
         self.oled_spi = SPI(SPI_DEVICE, baudrate=100000, sck=self.spi_sck, mosi=self.spi_sda)
         self.SSD = ssd1306.SSD1306_SPI(width, height, self.oled_spi, self.spi_dc, self.spi_res, self.spi_cs)
         self.SSD.fill(0)
         self.SSD.show()
-        
+
+    def invert_region(self, x, y, width, height):
+        # Invert a specific region on the display
+        for i in range(x, x + width):
+            for j in range(y, y + height):
+                pixel = self.SSD.pixel(i, j)
+                self.SSD.pixel(i, j, not pixel)
+
     def update_buttons(self, icons):
         global current_state, ENTER, current_posx, current_posy
-       
+        
         for icon in icons:
             if isinstance(icon, Button):
                 if icon.grid_x == current_posx and icon.grid_y == current_posy:
                     icon.selected = True
-                    if(ENTER and icon.state):
-                         current_state = icon.state
-                         current_posx = current_state.start_posx
-                         current_posy = current_state.start_posy
-                         button_1.irq(handler=current_state.B1Handler, trigger=Pin.IRQ_FALLING)
-                         button_2.irq(handler=current_state.B2Handler, trigger=Pin.IRQ_FALLING)
-                         EncoderA.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=current_state.ENCA)
-                         EncoderB.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=current_state.ENCB)
-                         self.render(current_state.icons)
-                         ENTER=False
+                 
+                    if ENTER and icon.state:
+                       
+                        current_state = icon.state
+                        current_posx = current_state.start_posx
+                        current_posy = current_state.start_posy
+                        button_1.irq(handler=current_state.B1Handler, trigger=Pin.IRQ_FALLING)
+                        button_2.irq(handler=current_state.B2Handler, trigger=Pin.IRQ_FALLING)
+                        EncoderA.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=current_state.ENCA)
+                        EncoderB.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=current_state.ENCB)
+                        self.render(current_state.icons)
+                    ENTER = False
                 else:
                     icon.selected = False
-            
+
     def render(self, icons):
         global current_state
         self.SSD.fill(0)
         for icon in icons:
-            if isinstance(icon, Button) and icon.selected:   
-                self.SSD.fill_rect(icon.xpos_text - 2, icon.ypos_text - 2, icon.width, icon.height, 1)
+            if isinstance(icon, Button) and icon.selected:
+                # Draw the icon text first
+                self.SSD.text(icon.text, icon.xpos_text, icon.ypos_text, 1)
+                # Invert the region of the selected icon
+                self.invert_region(icon.xpos_text - 2, icon.ypos_text - 2, icon.width, icon.height)
             else:
-                self.SSD.text(icon.text, icon.xpos_text, icon.ypos_text)
+                self.SSD.text(icon.text, icon.xpos_text, icon.ypos_text, 1)  # Normal text color
                 if icon.has_border:
-                    self.SSD.rect(icon.xpos_text - 2, icon.ypos_text - 2, icon.width, icon.height, 1)
-                    pass
+                    self.SSD.rect(icon.xpos_text - 2, icon.ypos_text - 2, icon.width, icon.height, 1)  # Normal border
         self.SSD.show()
-        
         
 class State:
     def __init__(self):
@@ -295,59 +291,90 @@ class State:
         pass
     def B2Handler(pin):
         pass
-    def ENCA(pin):
+    def ENCA(self, pin):
+        pass 
+    # Interrupt handler for EncoderB pin (optional, if needed)
+    def ENCB(self, pin):
         pass
-    def ENCB(pin):
-        pass
-
 class ClockState(State):
-    def __init__(self, hour, minute):
+    def __init__(self):
         super().__init__()  # Initialize superclass Display
-        self.current_hour = hour
-        self.current_minute = minute
-        #format clock string properly
-        str_num = '{:02d}'.format(self.current_minute)
-        self.clock = Icon((str(self.current_hour) + ":" + str_num),1,3,False)
-        self.menu = Button("Menu",0,0,True,True)
+        self.menu = Button("Menu",0,5,True,True)
         self.menu.configureState(Menu_s)
-        self.world_clock("Zones",0,1,False,True)
-        self.alarm("Alarm",0,2,False,False)
-        self.alarm.configureState(Alarm_s)
-        self.hour_adj = Button("Hr..",0,5,False,True)
-        self.minute_adj = Icon("Min.",1,5,False)
-        self.h24_h12 = Button("12/24",2,5,False,True)
-        #add all icons created to the icons list (used by display class)
-        self.icons = [self.menu, self.hour_adj, self.minute_adj,self.h24_h12]
+        self.hour_adj = Button("Hr.",1,5,False,True)
+        self.min_adj = Button("Min",2,5,False,True)
+        self.format_time = "12h"
+        self.format_adj = Button(self.format_time,0,0,False,True)
+        self.zone = "PST"
+        self.time_zone = Button(self.zone,1,0,False,True)
         self.start_posx = 0
-        self.start_posy = 0
-    def update(self):
-        display.update_buttons(self.icons)
-    def B1Handler(self,pin):
-        global current_posx, current_posy
-         if debounce_handler(pin):
-            current_posx+=1
-            if(current_posx>2 and current_posy ==0):
-                current_posx = 0
-                current_posy = 5
-            elif(current_posx>2 and current_posy==5):
-                current_posx=2
-            self.update()  
-            display.render(self.icons)
+        self.start_posy = 5
+        self.clock = Icon("", 1, 3, False)  # Placeholder for the clock icon
+        self.update_time()  # Initialize the clock display
+        self.icons = [self.clock, self.menu, self.hour_adj, self.min_adj,self.format_adj,self.time_zone]
+        # Timer setup for minute update
+        self.timer = Timer()
+        self.timer.init(period=60000, mode=Timer.PERIODIC, callback=self.timer_callback)
+        
+    def convert_to_12h(self,hour, minute):
+        if hour >= 0 and hour < 12:
+            period = "AM"
+            if hour == 0:
+                hour = 12  # 0 AM is 12 AM in 12-hour format
+        else:
+            period = "PM"
+            if hour > 12:
+                hour -= 12  # Convert PM hours to 12-hour format
+        
+        return f"{hour}:{minute:02d} {period}"
 
-    def B2Handler(self,pin):
-        global current_posx, current_posy
-        if debounce_handler(pin):
-            if(current_posx<0 and current_posy==0)
-                current_posx=0
-            elif(current_posx<0 and current_posy ==5)
+    def update_time(self):
+        year, month, day, weekday, hours, minutes, seconds, subseconds = rtc.datetime()
+        
+        if(self.format_time=="24h"):
+            clock_text = '{:02d}:{:02d}'.format(hours, minutes)
+        else:
+            clock_text = self.convert_to_12h(hours,minutes)
+
+        self.clock.text = clock_text
+    def update(self):
+        self.menu.configureState(Menu_s)
+        display.update_buttons(self.icons)
+    def timer_callback(self, timer):
+        global current_state
+        self.update_time()
+        if(isinstance(current_state,ClockState)):
+            display.render(self.icons)
+        else:
+            pass
+        check_for_alarm()
+
+    def B1Handler(self,pin):
+         global current_state, current_posx, current_posy
+         if debounce_handler(pin):
+            if(current_posx <= 0 and current_posy ==5):
                 current_posy=0
+                current_posx = 1
+            elif(current_posx<=0 and current_posy ==0):
+                current_posy=5
                 current_posx=2
+            else:
+                current_posx -= 1
             self.update()
             display.render(self.icons)
-
-    def ENCA(self,pin):
-        global A_state, A_rising_edge, A_falling_edge, rotation_direction, radio
-        print("in")
+#    def B2Handler(self,pin):
+#         global current_state, current_posy
+#         if debounce_handler(pin):
+#             current_posy += 2
+#             
+#             if(current_posy >4):
+#                 current_posy = 4
+#                 
+#             self.update()
+#             display.render(self.icons)
+            
+    def ENCA(self, pin):
+        global A_state, A_rising_edge, A_falling_edge, rotation_direction, radio, rtc
         # Read current state of EncoderA and EncoderB pins
         A_state = EncoderA.value()
         B_state = EncoderB.value()
@@ -361,60 +388,110 @@ class ClockState(State):
         # Check for both rising and falling edges on EncoderA
         if A_rising_edge and A_falling_edge:
             if A_state != B_state:
-              #INCREASE LOGIC
+                if self.hour_adj.selected:
+                    year, month, day, weekday, hours, minutes, seconds, subseconds = rtc.datetime()
+                    if hours+1<=23:
+                        print(self.timer)
+                        rtc.datetime((year, month, day, weekday, (hours+1), minutes, seconds, subseconds))
+                    else:
+                        pass
+                if self.min_adj.selected:
+                    year, month, day, weekday, hours, minutes, seconds, subseconds = rtc.datetime()
+                    if minutes+1<=59:
+                        rtc.datetime((year, month, day, weekday, hours, (minutes+1), seconds, subseconds))
+                    else:
+                        pass
+                if self.format_adj.selected:
+                  
+                    if(self.format_time =="24h"):
+                        self.format_time = "12h"
+                    else:
+                        self.format_time = "24h"
+                    self.format_adj.text = self.format_time
             else:
-               pass
+                pass
             
             # Reset edge detection flags
-        A_rising_edge = False
-        A_falling_edge = False
+            A_rising_edge = False
+            A_falling_edge = False
+            self.update_time()
+            display.render(self.icons)
 
     # Interrupt handler for EncoderB pin (optional, if needed)
-    def ENCB(self,pin):
-        global B_state, B_rising_edge, B_falling_edge, rotation_direction
+    def ENCB(self, pin):
+        global B_state, B_rising_edge, B_falling_edge, rotation_direction, radio
         # Read current state of EncoderA and EncoderB pins
         A_state = EncoderA.value()
         B_state = EncoderB.value()
+        
         # Determine edge detection on EncoderB
         if B_state == 1 and A_state == 0:
             B_rising_edge = True
         elif B_state == 0 and A_state == 1:
             B_falling_edge = True
+        
         # Check for both rising and falling edges on EncoderB
         if B_rising_edge and B_falling_edge:
             if A_state == B_state:
                 pass
             else:
-                 #DECREASE LOGIC
+                if self.hour_adj.selected:
+                    year, month, day, weekday, hours, minutes, seconds, subseconds = rtc.datetime()
+                    if hours-1>=0 :
+                        rtc.datetime((year, month, day, weekday, (hours-1), minutes, seconds, subseconds))
+                    else:
+                        pass
+                   
+                if self.min_adj.selected:
+                    year, month, day, weekday, hours, minutes, seconds, subseconds = rtc.datetime()
+                    if minutes -1>=0:
+                        rtc.datetime((year, month, day, weekday, hours, (minutes-1), seconds, subseconds))
+                    else:
+                        pass
+                if self.format_adj.selected:
+                   
+                    if(self.format_time =="24h"):
+                        self.format_time = "12h"
+                    else:
+                        self.format_time = "24h"
+                        
+                    self.format_adj.text = self.format_time
+                      
                 
-            # Reset edge detection flags (reset finite state machine)
+                # Reset edge detection flags
             B_rising_edge = False
             B_falling_edge = False
-        
+            self.update_time()
+            display.render(self.icons)
 
 class RadioState(State):
     def __init__(self):
         super().__init__()
         global radio, Menu_s
         #_, _, frequency, _ = radio.GetSettings()
-        self.freq = 101.9
-        self.volume = 4
-        self.frequ_disp = Button(str(self.freq), 1, 3,False, True)
+        self.freq = 100.3
+        self.volume = 3
+        self.is_on = "N"
+        self.radioOn = Button("On: " + self.is_on,1,0,False,True)
+        self.frequency_text = Icon("Freq:",0,3,False)
+        self.volume_text = Icon("Volume:",0,2,False)
+        self.frequ_disp = Button("  "+str(self.freq)+"FM", 1, 3,False, False)
         self.menu = Button("Menu",0,5,True,True)
         self.menu.configureState(Menu_s)
         self.vol_adj = Button("Vol.",1,5,False,True)
-        self.vol_disp = Icon(str(self.volume),0,1,False)
+        self.vol_disp = Icon(str(self.volume),2,2,False)
         self.freq_adj = Button("Freq.",2,5,False,True)
-        self.icons = [self.frequ_disp, self.menu, self.vol_adj, self.freq_adj,self.vol_disp]
+        self.icons = [self.frequ_disp, self.menu, self.vol_adj, self.freq_adj,self.vol_disp,self.frequency_text, self.volume_text,self.radioOn]
         self.start_posx = 0
         self.start_posy = 5
    
     def update(self):
         self.menu.configureState(Menu_s)
         display.update_buttons(self.icons)
+        
     def ENCA(self,pin):
         global A_state, A_rising_edge, A_falling_edge, rotation_direction, radio
-        print("in")
+       
         # Read current state of EncoderA and EncoderB pins
         A_state = EncoderA.value()
         B_state = EncoderB.value()
@@ -433,14 +510,24 @@ class RadioState(State):
                        self.freq +=0.1
                        radio.ProgramRadio()
                     # Update the frequency displayed on the icon
-                       self.frequ_disp.text = f"{self.freq:.1f}"
-                       display.render(self.icons)
+                       self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
                 if(self.vol_adj.selected):
-                    if ( radio.SetVolume(self.volume+1 ) == True ):
+                    if ( radio.SetVolume(self.volume+2 ) == True ):
                         radio.ProgramRadio()
-                        self.volume+=1
+                        self.volume+=2
                         self.vol_disp.text = str(self.volume)
-                        display.render(self.icons)
+                if(self.radioOn.selected):
+                    if(self.is_on == "N"):
+                        self.is_on = "Y"
+                        self.radioOn.text = "On: " + self.is_on
+                        radio.SetMute(False)
+                        radio.ProgramRadio()
+                    else:
+                        self.is_on = "N"
+                        self.radioOn.text = "On: " + self.is_on
+                        radio.SetMute(True)
+                        radio.ProgramRadio()
+                display.render(self.icons)
             else:
                pass
             
@@ -454,81 +541,98 @@ class RadioState(State):
         # Read current state of EncoderA and EncoderB pins
         A_state = EncoderA.value()
         B_state = EncoderB.value()
+        
         # Determine edge detection on EncoderB
         if B_state == 1 and A_state == 0:
             B_rising_edge = True
         elif B_state == 0 and A_state == 1:
             B_falling_edge = True
+        
         # Check for both rising and falling edges on EncoderB
         if B_rising_edge and B_falling_edge:
             if A_state == B_state:
                 pass
+                
             else:
-                #after seeing rising and falling edges this interrupt has been triggered again
-                #this means b just began the next cycle. If B differs from A it means B must be ahead
-                #(since A would still be Low if it were ahead)
                 if(self.freq_adj.selected):
                     if(radio.SetFrequency(self.freq-0.1) ==True):
                         self.freq-=0.1
                         radio.ProgramRadio()
                     # Update the frequency displayed on the icon
-                        self.frequ_disp.text = f"{self.freq:.1f}"
-                        display.render(self.icons)
+                        self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
                 if(self.vol_adj.selected):
-                    if ( radio.SetVolume( self.volume-1 ) == True ):
+                    if ( radio.SetVolume( self.volume-2 ) == True ):
                             radio.ProgramRadio()
-                            self.volume-=1
+                            self.volume-=2
                             self.vol_disp.text = str(self.volume)
-                            display.render(self.icons)
+                if(self.radioOn.selected):
+                    if(self.is_on == "N"):
+                        self.is_on = "Y"
+                        self.radioOn.text = "On: " + self.is_on
+                        radio.SetMute(False)
+                        radio.ProgramRadio() 
+                    else:
+                        self.is_on = "N"
+                        self.radioOn.text = "On: " + self.is_on
+                        radio.SetMute(True)
+                        radio.ProgramRadio()
+                display.render(self.icons)
                 
-            # Reset edge detection flags (reset finite state machine)
+            # Reset edge detection flags
             B_rising_edge = False
             B_falling_edge = False
  
     def B1Handler(self,pin):
-        global current_posx
+        global current_posx, current_posy
         if debounce_handler(pin):
-            current_posx +=1
-            if(current_posx>2):
+            current_posx -=1
+            if(current_posx<0):
+                current_posx = 1
+                current_posy = 0
+            if(current_posx==0 and current_posy ==0):
                 current_posx = 2
+                current_posy = 5
+            
             self.update()
-        
             display.render(self.icons)
            
     def B2Handler(self,pin):
-        global current_posx
-        if debounce_handler(pin):
-            current_posx-=1
-            if(current_posx<0):
-                current_posx = 0
-            self.update()
-            display.render(self.icons)
+        pass
             
+      
 class AlarmState(State):
     def __init__(self):
         super().__init__()
-        self.alarm_text = Icon("Alarm:",0,2,False)
-        self.snooze_text = Icon("Snooze:",0,3,False)
+        global rtc
+        self.alarm_text = Icon("Alarm:",0,3,False)
+        self.snooze_text = Icon("Sleep:",0,4,False)
+        self.frequency_adj = Icon("Freq:",0,2,False)
+        self.start_posx = 0
+        self.start_posy = 5
         self.snoozeLength = 5
-        self.alarm_hour = 12
+        self.alarm_hour = 0
         self.alarm_minute = 0
+        self.frequency = 1000
         str_num = '{:02d}'.format(self.alarm_minute)
-        self.alarm_disp = Icon(str(hour)+":"+alarm_minute,1,2,True)
-        self.snooze_disp = Icon(str(snoozeLength) + " Mins",1,3,True)
-        self.hour_adj = Button("Hr.",0,5,False,True)
-        self.minute_adj = Button("Min.",1,5,False,True)
-        self.snooze_adj = Button("Snooze",2,5,False,True)
-        self.menu = Button("Menu",0,1,True,False)
-        self.alarmOn = Button("On: " + "N",1,1,False,True)
-        self.alarmconfig = Button("Config.",2,1,False,True)
-        self.icons = [self.alarm_text,self.snooze_text,self.alarm_disp,self.snooze_disp,self.hour_adj,self.minute_adj,self.snooze_adj,self.menu,self.alarmOn,self.alarmConfig]
-        
+        self.alarm_disp = Icon(" "+str(self.alarm_hour)+":"+str_num,1,3,False)
+        self.snooze_disp = Icon(" "+str(self.snoozeLength) + " Mins",1,4,False)
+        self.frequency_disp = Icon(" " + str(self.frequency)+"Hz",1,2,False)
+        self.hour_adj = Button("Hr.",1,5,False,True)
+        self.minute_adj = Button("Min.",2,5,False,True)
+        self.snooze_adj = Button("Sleep",0,0,False,True)
+        self.menu = Button("Menu",0,5,True,True)
+        self.menu.configureState(Menu_s)
+        self.is_on = "N"
+        self.alarmOn = Button("On: " + self.is_on,1,0,False,True)
+        self.alarmconfig = Button("Tune",2,0,False,True)
+        self.icons = [self.alarm_text,self.alarm_disp,self.snooze_disp,self.hour_adj,self.minute_adj,self.snooze_adj,self.menu,self.alarmOn,self.alarmconfig,self.frequency_adj,self.frequency_disp,self.snooze_text]
         
     def update(self):
+        self.menu.configureState(Menu_s)
         display.update_buttons(self.icons)
     def ENCA(self,pin):
         global A_state, A_rising_edge, A_falling_edge, rotation_direction, radio
-        print("in")
+       
         # Read current state of EncoderA and EncoderB pins
         A_state = EncoderA.value()
         B_state = EncoderB.value()
@@ -542,13 +646,44 @@ class AlarmState(State):
         # Check for both rising and falling edges on EncoderA
         if A_rising_edge and A_falling_edge:
             if A_state != B_state:
-              #INCREASE LOGIC
+               if(self.alarmconfig.selected):
+                   if(self.frequency+10 <= 10000):
+                       self.frequency +=10
+                    # Update the frequency displayed on the icon
+                       self.frequency_disp.text = " " + str(self.frequency)+"Hz"
+               if(self.snooze_adj.selected):
+                    if (self.snoozeLength+1 < 60 ):
+                        self.snoozeLength+=1
+                        self.snooze_disp.text = " "+str(self.snoozeLength) + " Mins"
+               if self.hour_adj.selected:
+                    if self.alarm_hour+1<=23:
+                        self.alarm_hour+=1
+                        str_num = '{:02d}'.format(self.alarm_minute)
+                        self.alarm_disp.text = " "+str(self.alarm_hour)+":"+str_num
+                    else:
+                        pass
+               if self.minute_adj.selected:
+                    if self.alarm_minute+1<=59:
+                        self.alarm_minute+=1
+                        str_num = '{:02d}'.format(self.alarm_minute)
+                        self.alarm_disp.text = " "+str(self.alarm_hour)+":"+str_num
+                    else:
+                        pass
+               if(self.alarmOn.selected):
+                    if(self.is_on == "N"):
+                        self.is_on = "Y"
+                        self.alarmOn.text = "On: " + self.is_on
+                    else:
+                        self.is_on = "N"
+                        self.alarmOn.text = "On: " + self.is_on
+               display.render(self.icons)
+    
             else:
                pass
             
             # Reset edge detection flags
-        A_rising_edge = False
-        A_falling_edge = False
+            A_rising_edge = False
+            A_falling_edge = False
             
     # Interrupt handler for EncoderB pin (optional, if needed)
     def ENCB(self,pin):
@@ -567,40 +702,124 @@ class AlarmState(State):
                 pass
             else:
                  #DECREASE LOGIC
-                
+                if(self.alarmconfig.selected):
+                    if(self.frequency-10 >= 0):
+                       self.frequency -=10
+                    # Update the frequency displayed on the icon
+                       self.frequency_disp.text = " " + str(self.frequency)+"Hz"
+                if(self.snooze_adj.selected):
+                    if (self.snoozeLength-1 >0 ):
+                        self.snoozeLength-=1
+                        self.snooze_disp.text = " "+str(self.snoozeLength) + " Mins"
+                if self.hour_adj.selected:
+                    if self.alarm_hour-1>=0:
+                        self.alarm_hour-=1
+                        str_num = '{:02d}'.format(self.alarm_minute)
+                        self.alarm_disp.text = " "+str(self.alarm_hour)+":"+str_num
+                    else:
+                        pass
+                if self.minute_adj.selected:
+                    if self.alarm_minute-1>=0:
+                        self.alarm_minute-=1
+                        str_num = '{:02d}'.format(self.alarm_minute)
+                        self.alarm_disp.text = " "+str(self.alarm_hour)+":"+str_num
+                    else:
+                        pass
+                if(self.alarmOn.selected):
+                    if(self.is_on == "N"):
+                        self.is_on = "Y"
+                        self.alarmOn.text = "On: " + self.is_on
+                    else:
+                        self.is_on = "N"
+                        self.alarmOn.text = "On: " + self.is_on
+                display.render(self.icons)
+                pass
             # Reset edge detection flags (reset finite state machine)
             B_rising_edge = False
             B_falling_edge = False
             
     def B1Handler(self,pin):
-         global current_state, current_posy
-         if debounce_handler(pin):
-            current_posy -= 2
-            if(current_posy<0):
-                current_posy = 0
+        global current_state, current_posx, current_posy
+        if debounce_handler(pin):
+            if(current_posx <= 0 and current_posy ==5):
+                current_posy=0
+                current_posx = 2
+            elif(current_posx<=0 and current_posy ==0):
+                current_posy=5
+                current_posx=2
+            else:
+                current_posx -= 1
             self.update()
             display.render(self.icons)
             
     def B2Handler(self,pin):
-        global current_state, current_posy
-        if debounce_handler(pin):
-            current_posy += 2
-            if(current_posy >4):
-                current_posy = 4
-            self.update()
-            display.render(self.icons)
-            
-            
-class AlarmConfigState:
-# a state to implement configuring the alarm
-#user will be able to adjust frequency, and period of repition of alarm
-    def __init__():
         pass
-    
-    
+            
+class PlayALARM(State):
+    def __init__(self):
+        super().__init__()
+        self.ALARM = Icon("ALARM", 1, 2,True)
+        self.icons = [self.ALARM]
+        self.start_posx = 1
+        self.start_posy = 0
+    def update(self):
+        display.update_buttons(self.icons)
+    def B1Handler(self,pin):
+        pass
+    def B2Handler(self,pin):
+        pass
+    def ENCA(self,pin):
+        global A_state, A_rising_edge, A_falling_edge, rotation_direction, SNOOZE
+     
+        # Read current state of EncoderA and EncoderB pins
+        A_state = EncoderA.value()
+        B_state = EncoderB.value()
+        
+        # Determine edge detection on EncoderA
+        if A_state == 1 and B_state == 0:
+            A_rising_edge = True
+        elif A_state == 0 and B_state == 1:
+            A_falling_edge = True
+        
+        # Check for both rising and falling edges on EncoderA
+        if A_rising_edge and A_falling_edge:
+            if A_state != B_state:
+              #INCREASE LOGIC
+                SNOOZE = True
+            else:
+               pass
+            
+            # Reset edge detection flags
+        A_rising_edge = False
+        A_falling_edge = False
+            
+    # Interrupt handler for EncoderB pin (optional, if needed)
+    def ENCB(self,pin):
+        global B_state, B_rising_edge, B_falling_edge, rotation_direction, current_state
+        # Read current state of EncoderA and EncoderB pins
+        A_state = EncoderA.value()
+        B_state = EncoderB.value()
+        # Determine edge detection on EncoderB
+        if B_state == 1 and A_state == 0:
+            B_rising_edge = True
+        elif B_state == 0 and A_state == 1:
+            B_falling_edge = True
+        # Check for both rising and falling edges on EncoderB
+        if B_rising_edge and B_falling_edge:
+            if A_state == B_state:
+                pass
+            else:
+                #DECREASE LOGIC
+                change_state(Clock_s)
+            # Reset edge detection flags (reset finite state machine)
+            B_rising_edge = False
+            B_falling_edge = False
+            
+            
 class MainMenuState(State):
     def __init__(self):
         super().__init__()
+        global icons
         self.clock_but = Button("CLOCK", 1, 0, True, True)
         self.radio_but = Button("RADIO", 1, 2, False, True)
         self.alarm_but = Button("ALARM", 1, 4, False, True)
@@ -618,35 +837,59 @@ class MainMenuState(State):
          if debounce_handler(pin):
             current_posy -= 2
             if(current_posy<0):
-                current_posy = 0
-            self.update()
-            display.render(self.icons)
-    def B2Handler(self,pin):
-        global current_state, current_posy
-        if debounce_handler(pin):
-            current_posy += 2
-            if(current_posy >4):
                 current_posy = 4
             self.update()
             display.render(self.icons)
+    def B2Handler(self,pin):
+        pass
 
+def debounce_handler(pin):
+    global last_pressed_time
+    current_time = utime.ticks_ms()
+    if current_time - last_pressed_time < debounce_delay:
+        return False
+    last_pressed_time = current_time
+    return pin.value() == 0  # Check if button is pressed
+
+
+def Enter_Handler(pin):
+    global ENTER, current_state
+    if debounce_handler(pin):
+        ENTER = True
+def change_state(state):
+    global current_state, current_posx, current_posy
+    current_state = state
+    current_posx = current_state.start_posx
+    current_posy = current_state.start_posy
+    EncoderA.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=current_state.ENCA)
+    EncoderB.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=current_state.ENCB)
+    button_1.irq(handler=current_state.B1Handler, trigger=Pin.IRQ_FALLING)
+    button_2.irq(handler=current_state.B2Handler, trigger=Pin.IRQ_FALLING)
+    current_state.update()
+    display.render(current_state.icons)
 class ClockRadio:
     def __init__(self):
         global Radio_s, current_state
         button_1.irq(handler=current_state.B1Handler, trigger=Pin.IRQ_FALLING)
         button_2.irq(handler=current_state.B2Handler, trigger=Pin.IRQ_FALLING)
+        EncoderA.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=Radio_s.ENCA)
+        EncoderB.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=Radio_s.ENCB)
         enter.irq(handler=Enter_Handler, trigger=Pin.IRQ_FALLING)
+
     def update(self, state):
         state.update()
         pass
      
-clock = Clock()
-alarm = Alarm()
+    
 display = Display(128,64)
-radio = Radio(100.3, 15, False)
-Menu_s =None
-Alarm_s = None
-Clock_s = ClockState(12,1)
+
+radio = Radio(101.9, 15, False)
+radio.SetMute(True)
+radio.ProgramRadio()
+Menu_s = None
+
+Clock_s = ClockState()
+
 Alarm_s = AlarmState()
 
 Radio_s = RadioState()
@@ -654,11 +897,37 @@ Menu_s = MainMenuState()
 #define states used by the clock radio before the clock radio
 current_state = Menu_s
 clock_radio = ClockRadio()
+Playalarm_s = PlayALARM()
 
-
-
+def check_for_alarm():
+    global current_state, current_posx, current_posy, Playalarm_s
+    if(Alarm_s.alarm_hour==rtc.datetime()[4] and Alarm_s.alarm_minute == rtc.datetime()[5]):
+        change_state(Playalarm_s)
 while True:
     clock_radio.update(current_state)
-    utime.sleep(0.1)
+    if(isinstance(current_state,PlayALARM)):
+        radio.SetMute(True)
+        radio.ProgramRadio()
+        pwm = PWM(Pin(5))
+        # Set the frequency of the PWM signal
+        pwm.freq(Alarm_s.frequency)
+        # Set the duty cycle to 50% (range is 0 to 65535, so 32767 is 50%)
+        pwm.duty_u16(32767)
+        # Wait for 0.5 seconds
+        utime.sleep(5)
+        radio.SetMute(False)
+        radio.ProgramRadio()
+        # Turn off the PWM signal by setting the duty cycle to 0
+        pwm.duty_u16(0)
+        
+        # Deinitialize the PWM to free up the GPIO pin
+        pwm.deinit()
+        
+        
+        
+        
+
     
+
+
 

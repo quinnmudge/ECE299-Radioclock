@@ -23,8 +23,6 @@ ENTER = False
 LAST_ENTER = False
 DEBOUNCE_DELAY_MS = 100
 
-alarmVolume = 32767 #Intialize alarm volume
-
 # Define button pins
 button_1 = Pin(13, Pin.IN, Pin.PULL_DOWN)  # Button for moving left
 button_2 = Pin(12, Pin.IN, Pin.PULL_DOWN)  # Button for moving right
@@ -462,8 +460,9 @@ class AlarmState(State):
     def update(self):
         self.menu.configureState(Menu_s)
         display.update_buttons(self.icons)
+
     def ENCA(self,pin):
-        global A_state, A_rising_edge, A_falling_edge, rotation_direction, radio, alarmVolume
+        global A_state, A_rising_edge, A_falling_edge, rotation_direction, radio
        
         # Read current state of EncoderA and EncoderB pins
         A_state = EncoderA.value()
@@ -479,15 +478,15 @@ class AlarmState(State):
         if A_rising_edge and A_falling_edge:
             if A_state != B_state:
                 if(self.frequency_adj.selected):
-                   if(self.frequency+10 <= 10000):
-                       self.frequency +=10
-                    # Update the frequency displayed on the icon
-                       self.frequency_disp.text = " " + str(self.frequency)+"Hz"
-               if(self.snooze_adj.selected):
+                    if(self.frequency+10 <= 10000):
+                        self.frequency +=10
+                        # Update the frequency displayed on the icon
+                        self.frequency_disp.text = " " + str(self.frequency)+"Hz"
+                if(self.snooze_adj.selected):
                     if (self.snoozeLength+1 < 60 ):
                         self.snoozeLength+=1
                         self.snooze_disp.text = " "+str(self.snoozeLength) + " Mins"
-               if self.hour_adj.selected:
+                if self.hour_adj.selected:
                     if self.alarm_hour+1<=23:
                         self.alarm_hour+=1
                         str_num = '{:02d}'.format(self.alarm_minute)
@@ -495,9 +494,7 @@ class AlarmState(State):
                             self.alarm_disp.text = " "+str(self.alarm_hour)+":"+str_num
                         else:
                             self.alarm_disp.text = " "+self.convert_to_12h(self.alarm_hour,self.alarm_minute)
-                    else:
-                        pass
-               if self.minute_adj.selected:
+                if self.minute_adj.selected:
                     if self.alarm_minute+1<=59:
                         self.alarm_minute+=1
                         str_num = '{:02d}'.format(self.alarm_minute)
@@ -505,9 +502,7 @@ class AlarmState(State):
                             self.alarm_disp.text = " "+str(self.alarm_hour)+":"+str_num
                         else:
                             self.alarm_disp.text = " "+self.convert_to_12h(self.alarm_hour,self.alarm_minute)
-                    else:
-                        pass
-               if(self.alarmOn.selected):
+                if(self.alarmOn.selected):
                     if(self.is_on == "N"):
                         self.is_on = "Y"
                         self.alarm_on.text = "On: " + self.is_on
@@ -515,18 +510,17 @@ class AlarmState(State):
                         self.is_on = "N"
                         self.alarm_on.text = "On: " + self.is_on
                 if self.volume_adj.selected:
-                    if (alarmVolume + 8100) <= 32500:
-                        alarmVolume += 8100
+                    if (self.volume + 1) <= 5:
+                        self.volume += 1
+                        self.volume_disp.text = " "+str(self.volume)
 
-            display.render(self.icons)
-    
+                display.render(self.icons)
             else:
-               pass
+                pass
             
             # Reset edge detection flags
             A_rising_edge = False
-            A_falling_edge = False
-            
+            A_falling_edge = False        
     # Interrupt handler for EncoderB pin (optional, if needed)
     def ENCB(self,pin):
         global B_state, B_rising_edge, B_falling_edge, rotation_direction
@@ -581,9 +575,12 @@ class AlarmState(State):
                         self.is_on = "N"
                         self.alarm_on.text = "On: " + self.is_on
                 if(self.volume_adj.selected):
-                    if(alarmVolume - 8100 <= 100):
-                        alarmVOlume -= 8100
+                    if(self.volume - 1 >= 0):
+                        self.volume -= 1
+                        self.volume_disp.text = " "+str(self.volume)
                 display.render(self.icons)
+
+            
                 pass
             # Reset edge detection flags (reset finite state machine)
             B_rising_edge = False
@@ -777,7 +774,7 @@ while True:
         while(count<2):
             pwm.freq(Alarm_s.frequency)
         # Set the duty cycle to 50% (range is 0 to 65535, so 32767 is 50%)
-            pwm.duty_u16(alarmVolume)
+            pwm.duty_u16(Alarm_s.volume*8100 + 100)
         # Wait for 0.5 seconds
             utime.sleep(0.5)
             pwm.duty_u16(0)

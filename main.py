@@ -23,6 +23,8 @@ ENTER = False
 LAST_ENTER = False
 DEBOUNCE_DELAY_MS = 100
 
+alarmVolume = 32767 #Intialize alarm volume
+
 # Define button pins
 button_1 = Pin(13, Pin.IN, Pin.PULL_DOWN)  # Button for moving left
 button_2 = Pin(12, Pin.IN, Pin.PULL_DOWN)  # Button for moving right
@@ -433,10 +435,11 @@ class AlarmState(State):
     def __init__(self):
         super().__init__()
         global rtc
-        self.alarm_text = Icon("Alarm:",0,3,False)
-        self.snooze_text = Icon("Sleep:",0,4,False)
-        self.frequency_adj = Icon("Freq:",0,2,False)
-        self.volume_adj = Icon("Vol:",0,1,False)
+        self.alarmOn = Button("Alarm:",0,4,False,True)
+        self.snooze_adj = Button("Sleep:",0,3,False,True)
+        self.frequency_adj = Button("Freq:",0,2,False,True)
+        self.volume_adj = Button("Vol:",0,1,False,True)
+        self.volume = 1
         self.start_posx = 0
         self.start_posy = 5
         self.snoozeLength = 5
@@ -444,24 +447,23 @@ class AlarmState(State):
         self.alarm_minute = 0
         self.frequency = 1000
         str_num = '{:02d}'.format(self.alarm_minute)
-        self.alarm_disp = Icon(" "+str(self.alarm_hour)+":"+str_num,1,3,False)
-        self.snooze_disp = Icon(" "+str(self.snoozeLength) + " Mins",1,4,False)
+        self.volume_disp = Icon(" "+str(self.volume),1,1,False)
+        self.alarm_disp = Icon(" "+str(self.alarm_hour)+":"+str_num,1,4,False)
+        self.snooze_disp = Icon(" "+str(self.snoozeLength) + " Mins",1,3,False)
         self.frequency_disp = Icon(" " + str(self.frequency)+"Hz",1,2,False)
         self.hour_adj = Button("Hr.",1,5,False,True)
         self.minute_adj = Button("Min.",2,5,False,True)
-        self.snooze_adj = Button("Sleep",0,0,False,True)
         self.menu = Button("Menu",0,5,True,True)
         self.menu.configureState(Menu_s)
         self.is_on = "N"
-        self.alarmOn = Button("On: " + self.is_on,1,0,False,True)
-        self.alarmconfig = Button("Tune",2,0,False,True)
-        self.icons = [self.alarm_text,self.alarm_disp,self.snooze_disp,self.hour_adj,self.minute_adj,self.snooze_adj,self.menu,self.alarmOn,self.alarmconfig,self.frequency_adj,self.frequency_disp,self.snooze_text, self.volume_adj]
+        self.alarm_on = Icon("On: " + self.is_on,2,0,False)
+        self.icons = [self.alarm_on,self.volume_disp,self.alarm_disp,self.snooze_disp,self.hour_adj,self.minute_adj,self.menu,self.alarmOn,self.frequency_adj,self.frequency_disp,self.snooze_adj, self.volume_adj]
         
     def update(self):
         self.menu.configureState(Menu_s)
         display.update_buttons(self.icons)
     def ENCA(self,pin):
-        global A_state, A_rising_edge, A_falling_edge, rotation_direction, radio
+        global A_state, A_rising_edge, A_falling_edge, rotation_direction, radio, alarmVolume
        
         # Read current state of EncoderA and EncoderB pins
         A_state = EncoderA.value()
@@ -476,7 +478,7 @@ class AlarmState(State):
         # Check for both rising and falling edges on EncoderA
         if A_rising_edge and A_falling_edge:
             if A_state != B_state:
-               if(self.alarmconfig.selected):
+                if(self.frequency_adj.selected):
                    if(self.frequency+10 <= 10000):
                        self.frequency +=10
                     # Update the frequency displayed on the icon
@@ -508,11 +510,15 @@ class AlarmState(State):
                if(self.alarmOn.selected):
                     if(self.is_on == "N"):
                         self.is_on = "Y"
-                        self.alarmOn.text = "On: " + self.is_on
+                        self.alarm_on.text = "On: " + self.is_on
                     else:
                         self.is_on = "N"
-                        self.alarmOn.text = "On: " + self.is_on
-               display.render(self.icons)
+                        self.alarm_on.text = "On: " + self.is_on
+                if self.volume_adj.selected:
+                    if (alarmVolume + 8100) <= 32500:
+                        alarmVolume += 8100
+
+            display.render(self.icons)
     
             else:
                pass
@@ -538,7 +544,7 @@ class AlarmState(State):
                 pass
             else:
                  #DECREASE LOGIC
-                if(self.alarmconfig.selected):
+                if(self.frequency_adj.selected):
                     if(self.frequency-10 >= 0):
                        self.frequency -=10
                     # Update the frequency displayed on the icon
@@ -570,10 +576,13 @@ class AlarmState(State):
                 if(self.alarmOn.selected):
                     if(self.is_on == "N"):
                         self.is_on = "Y"
-                        self.alarmOn.text = "On: " + self.is_on
+                        self.alarm_on.text = "On: " + self.is_on
                     else:
                         self.is_on = "N"
-                        self.alarmOn.text = "On: " + self.is_on
+                        self.alarm_on.text = "On: " + self.is_on
+                if(self.volume_adj.selected):
+                    if(alarmVolume - 8100 <= 100):
+                        alarmVOlume -= 8100
                 display.render(self.icons)
                 pass
             # Reset edge detection flags (reset finite state machine)
@@ -583,13 +592,14 @@ class AlarmState(State):
     def B1Handler(self,pin):
         global current_state, current_posx, current_posy
         if debounce_handler(pin):
-            if(current_posx <= 0 and current_posy ==5):
-                current_posy=0
-                current_posx = 2
-            elif(current_posx<=0 and current_posy ==0):
+            if(current_posx <= 0):
+                print("in")
+                current_posy-=1
+                current_posx=0
+            if(current_posy==0 and current_posx<=0):
+                current_posx=3
                 current_posy=5
-                current_posx=2
-            else:
+            if(current_posx!=0):
                 current_posx -= 1
             self.update()
             display.render(self.icons)
@@ -767,7 +777,7 @@ while True:
         while(count<2):
             pwm.freq(Alarm_s.frequency)
         # Set the duty cycle to 50% (range is 0 to 65535, so 32767 is 50%)
-            pwm.duty_u16(32767)
+            pwm.duty_u16(alarmVolume)
         # Wait for 0.5 seconds
             utime.sleep(0.5)
             pwm.duty_u16(0)

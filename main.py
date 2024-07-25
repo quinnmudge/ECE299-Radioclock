@@ -4,6 +4,7 @@ import utime
 import rda5807
 EncoderA = machine.Pin(27, machine.Pin.IN, machine.Pin.PULL_UP)
 EncoderB = machine.Pin(28, machine.Pin.IN, machine.Pin.PULL_UP)
+machine.Pin(23, machine.Pin.OUT)
 # Initialize variables to keep track of encoder state
 A_state = 0
 B_state = 0
@@ -26,7 +27,7 @@ DEBOUNCE_DELAY_MS = 100
 # Define button pins
 button_1 = Pin(13, Pin.IN, Pin.PULL_DOWN)  # Button for moving left
 button_2 = Pin(12, Pin.IN, Pin.PULL_DOWN)  # Button for moving right
-enter = Pin(11, Pin.IN, Pin.PULL_DOWN)     # Button for enter
+enter = Pin(5, Pin.IN, Pin.PULL_DOWN)     # Button for enter
 
 # Debouncing variables
 last_pressed_time = 0
@@ -183,7 +184,7 @@ class ClockState(State):
             display.render(self.icons)
         else:
             pass
-        check_for_alarm()
+       
 
     def B1Handler(self,pin):
          global current_state, current_posx, current_posy
@@ -635,6 +636,8 @@ class PlayALARM(State):
             if A_state != B_state:
                change_state(Clock_s)
                SNOOZE = utime.ticks_ms()
+               print(SNOOZE)
+               print("should set snooze")
     
             else:
                pass
@@ -761,14 +764,16 @@ Playalarm_s = PlayALARM()
 def check_for_alarm():
     global current_state, current_posx, current_posy, Playalarm_s
     if((Alarm_s.alarm_hour==rtc.datetime()[4] and Alarm_s.alarm_minute == rtc.datetime()[5] and Alarm_s.is_on=="Y") or (utime.ticks_diff(utime.ticks_ms(),SNOOZE) > Alarm_s.snoozeLength * 60000) and SNOOZE >0):
-        change_state(Playalarm_s)
+       print("should play alarm")
+       change_state(Playalarm_s)
 while True:
     clock_radio.update(current_state)
+    check_for_alarm()
     #play the alarm
     if(isinstance(current_state,PlayALARM)):
         radio.mute(True)
         radio.update_rds()
-        pwm = PWM(Pin(5))
+        pwm = PWM(Pin(26))
         # Set the frequency of the PWM signal
         count=0
         while(count<2):

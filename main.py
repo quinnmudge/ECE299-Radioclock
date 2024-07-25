@@ -1,3 +1,4 @@
+
 from machine import Pin, SPI, I2C, RTC, Timer, PWM
 import ssd1306
 import utime
@@ -36,7 +37,7 @@ radio_programming_timer = utime.ticks_ms()
 # RTC Setup
 rtc = RTC()
 rtc.datetime((2024, 7, 10, 0, 0, 0, 0, 0))  # Set initial RTC time (year, month, day, weekday, hours, minutes, seconds, subseconds)
-SNOOZE = -1
+SNOOZE = [0,0,0,0,0,0,0,0]
 
 
 class Icon:
@@ -107,9 +108,14 @@ class Display:
         for icon in icons:
             if isinstance(icon, Button) and icon.selected:
                 # Draw the icon text first
+            
                 self.SSD.text(icon.text, icon.xpos_text, icon.ypos_text, 1)
                 # Invert the region of the selected icon
-                self.invert_region(icon.xpos_text - 2, icon.ypos_text - 2, icon.width, icon.height)
+                if(len(icon.text)>5):
+                    self.invert_region(icon.xpos_text - 2, icon.ypos_text - 2, icon.width+5, icon.height)
+                else:
+                    self.invert_region(icon.xpos_text - 2, icon.ypos_text - 2, icon.width, icon.height)
+               
             else:
                 self.SSD.text(icon.text, icon.xpos_text, icon.ypos_text, 1)  # Normal text color
                 if icon.has_border:
@@ -151,9 +157,9 @@ class ClockState(State):
         self.hour_adj = Button("Hr.",1,5,False,True)
         self.min_adj = Button("Min",2,5,False,True)
         self.format_adj = Button(self.format_time,0,0,False,True)
-        self.zone = 7
-        self.zone = "UTC"+str(self.zone)
-        self.time_zone = Button(self.zone,1,0,False,True)
+        self.zone = -7
+        self.zone_text = "UTC"+str(self.zone)
+        self.time_zone = Button(self.zone_text,1,0,False,True)
         self.start_posx = 0
         self.start_posy = 5
         self.clock = Icon("", 1, 3, False)  # Placeholder for the clock icon
@@ -175,7 +181,7 @@ class ClockState(State):
         self.clock.text = clock_text
     def update(self):
         self.menu.configureState(Menu_s)
-        self.Alarm_on.text = "Al: " +Alarm_s.is_on
+        self.Alarm_on.text = " Al:" +Alarm_s.is_on
         display.update_buttons(self.icons)
     def timer_callback(self, timer):
         global current_state
@@ -214,16 +220,15 @@ class ClockState(State):
         
         # Check for both rising and falling edges on EncoderA
         if A_rising_edge and A_falling_edge:
+            year, month, day, weekday, hours, minutes, seconds, subseconds = rtc.datetime()
             if A_state != B_state:
                 if self.hour_adj.selected:
-                    year, month, day, weekday, hours, minutes, seconds, subseconds = rtc.datetime()
                     if hours+1<=23:
                         print(self.timer)
                         rtc.datetime((year, month, day, weekday, (hours+1), minutes, seconds, subseconds))
                     else:
                         pass
                 if self.min_adj.selected:
-                    year, month, day, weekday, hours, minutes, seconds, subseconds = rtc.datetime()
                     if minutes+1<=59:
                         rtc.datetime((year, month, day, weekday, hours, (minutes+1), seconds, subseconds))
                     else:
@@ -235,6 +240,16 @@ class ClockState(State):
                     else:
                         self.format_time = "24h"
                     self.format_adj.text = self.format_time
+                if self.time_zone.selected:
+                    if(self.zone<14):
+                        print(hours)
+                        if(hours+1 > 23):
+                            day+=1
+                            weekday+=1
+                            hours = -1
+                        self.zone+=1
+                        rtc.datetime((year, month, day, weekday, (hours+1), minutes, seconds, subseconds))
+                        self.time_zone.text = "UTC"+str(self.zone)
             else:
                 pass
             
@@ -259,11 +274,11 @@ class ClockState(State):
         
         # Check for both rising and falling edges on EncoderB
         if B_rising_edge and B_falling_edge:
+            year, month, day, weekday, hours, minutes, seconds, subseconds = rtc.datetime()
             if A_state == B_state:
                 pass
             else:
                 if self.hour_adj.selected:
-                    year, month, day, weekday, hours, minutes, seconds, subseconds = rtc.datetime()
                     if hours-1>=0 :
                         rtc.datetime((year, month, day, weekday, (hours-1), minutes, seconds, subseconds))
                     else:
@@ -283,6 +298,16 @@ class ClockState(State):
                         self.format_time = "24h"
                         
                     self.format_adj.text = self.format_time
+                if self.time_zone.selected:
+                    if(self.zone>-11):
+                        if(hours-1 < 0):
+                            hours=24
+                            weekday-=1
+                            day-=1
+                        self.zone-=1
+                        
+                        rtc.datetime((year, month, day, weekday, (hours-1), minutes, seconds, subseconds))
+                        self.time_zone.text = "UTC"+str(self.zone)
                       
                 
                 # Reset edge detection flags
@@ -300,15 +325,17 @@ class RadioState(State):
         self.volume = 3
         self.is_on = "N"
         self.radioOn = Button("On: " + self.is_on,1,0,False,True)
+        self.station = Icon("CFUV",1,4,False)
         self.frequency_text = Icon("Freq:",0,3,False)
         self.volume_text = Icon("Volume:",0,2,False)
+        self.seek = Button("Seek",0,0,False,True)
         self.frequ_disp = Button("  "+str(self.freq)+"FM", 1, 3,False, False)
         self.menu = Button("Menu",0,5,True,True)
         self.menu.configureState(Menu_s)
         self.vol_adj = Button("Vol.",1,5,False,True)
         self.vol_disp = Icon(str(self.volume),2,2,False)
         self.freq_adj = Button("Freq.",2,5,False,True)
-        self.icons = [self.frequ_disp, self.menu, self.vol_adj, self.freq_adj,self.vol_disp,self.frequency_text, self.volume_text,self.radioOn]
+        self.icons = [self.frequ_disp, self.menu, self.vol_adj, self.freq_adj,self.vol_disp,self.frequency_text, self.volume_text,self.radioOn, self.seek]
         self.start_posx = 0
         self.start_posy = 5
    
@@ -337,6 +364,8 @@ class RadioState(State):
                    radio.set_frequency_MHz(self.freq +0.1)
                    self.freq +=0.1
                    radio.update_rds()
+                   self.station = radio.station_name
+                   print(radio.radio_text)
                    # Update the frequency displayed on the icon
                    self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
                 if(self.vol_adj.selected):
@@ -356,6 +385,11 @@ class RadioState(State):
                         self.radioOn.text = "On: " + self.is_on
                         radio.mute(True)
                         radio.update_rds()
+                if(self.seek.selected):
+                    radio.seek_up()
+                    self.station = radio.station_name
+                    self.freq = radio.get_frequency_MHz()
+                    self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
                 display.render(self.icons)
             else:
                pass
@@ -387,6 +421,7 @@ class RadioState(State):
                     radio.set_frequency_MHz(self.freq-0.1)
                     self.freq-=0.1
                     radio.update_rds()
+                    self.station = radio.radio_text
                     # Update the frequency displayed on the icon
                     self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
                 if(self.vol_adj.selected):
@@ -406,6 +441,11 @@ class RadioState(State):
                         self.radioOn.text = "On: " + self.is_on
                         radio.mute(True)
                         radio.update_rds()
+                if(self.seek.selected):
+                    radio.seek_down()
+                    self.freq = radio.get_frequency_MHz()
+                    self.station = radio.station_name
+                    self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
                 display.render(self.icons)
                 
             # Reset edge detection flags
@@ -416,10 +456,10 @@ class RadioState(State):
         global current_posx, current_posy
         if debounce_handler(pin):
             current_posx -=1
-            if(current_posx<0):
+            if(current_posx<0 and current_posy != 0):
                 current_posx = 1
                 current_posy = 0
-            if(current_posx==0 and current_posy ==0):
+            if(current_posx==-1 and current_posy ==0):
                 current_posx = 2
                 current_posy = 5
             
@@ -609,7 +649,9 @@ class PlayALARM(State):
     def __init__(self):
         super().__init__()
         self.ALARM = Icon("ALARM", 1, 2,True)
-        self.icons = [self.ALARM]
+        self.Instructions1 = Icon("SNOOZE: CCW", 0,5,False)
+        self.Instructions2 = Icon("OFF: CW", 0,0,False)
+        self.icons = [self.ALARM, self.Instructions1, self.Instructions2]
         self.start_posx = 1
         self.start_posy = 0
     def update(self):
@@ -619,7 +661,7 @@ class PlayALARM(State):
     def B2Handler(self,pin):
         pass
     def ENCA(self,pin):
-        global A_state, A_rising_edge, A_falling_edge, rotation_direction,current_state, Clock_s,SNOOZE
+        global A_state, A_rising_edge, A_falling_edge, rotation_direction,current_state, Clock_s,SNOOZE, rtc
        
         # Read current state of EncoderA and EncoderB pins
         A_state = EncoderA.value()
@@ -635,7 +677,14 @@ class PlayALARM(State):
         if A_rising_edge and A_falling_edge:
             if A_state != B_state:
                change_state(Clock_s)
-               SNOOZE = utime.ticks_ms()
+               year, month, day, weekday, hours, minutes, seconds, subseconds = rtc.datetime()
+               if(minutes + Alarm_s.snoozeLength >= 60):
+                   hours+=1
+                   minutes = (minutes + Alarm_s.snoozeLength) % 60
+                   SNOOZE = [year, month, day, weekday, hours, minutes, seconds, subseconds]
+               else:
+                   SNOOZE = [year, month, day, weekday, hours, minutes+Alarm_s.snoozeLength, seconds, subseconds]
+                   
                print(SNOOZE)
                print("should set snooze")
     
@@ -664,7 +713,7 @@ class PlayALARM(State):
             else:
                 #DECREASE LOGIC
                 change_state(Clock_s)
-                SNOOZE = -1
+                SNOOZE = [0,0,0,0,0,0,0,0]
             # Reset edge detection flags (reset finite state machine)
             B_rising_edge = False
             B_falling_edge = False
@@ -763,7 +812,7 @@ Playalarm_s = PlayALARM()
 
 def check_for_alarm():
     global current_state, current_posx, current_posy, Playalarm_s
-    if((Alarm_s.alarm_hour==rtc.datetime()[4] and Alarm_s.alarm_minute == rtc.datetime()[5] and Alarm_s.is_on=="Y") or (utime.ticks_diff(utime.ticks_ms(),SNOOZE) > Alarm_s.snoozeLength * 60000) and SNOOZE >0):
+    if((Alarm_s.alarm_hour==rtc.datetime()[4] and Alarm_s.alarm_minute == rtc.datetime()[5] and rtc.datetime()[6]==0  and Alarm_s.is_on=="Y") or (SNOOZE[0] == rtc.datetime()[0] and SNOOZE[1] == rtc.datetime()[1] and SNOOZE[2] == rtc.datetime()[2] and SNOOZE[3] == rtc.datetime()[3] and SNOOZE[4] == rtc.datetime()[4] and  SNOOZE[5] == rtc.datetime()[5] and SNOOZE[6] == rtc.datetime()[6])):
        print("should play alarm")
        change_state(Playalarm_s)
 while True:
@@ -795,10 +844,3 @@ while True:
         pwm.deinit()
         
         
-        
-        
-
-    
-
-
-

@@ -16,14 +16,14 @@ B_falling_edge = False
 rotation_direction = 0  # 1 for clockwise, -1 for counterclockwise
 
 current_posx = 1
-current_posy = 0
+current_posy = 4
 # Interrupt handler for EncoderA pin
 
 grid_size_x = 42
 grid_size_y = 10
 ENTER = False
 LAST_ENTER = False
-DEBOUNCE_DELAY_MS = 100
+
 
 # Define button pins
 button_1 = Pin(13, Pin.IN, Pin.PULL_DOWN)  # Button for moving left
@@ -32,7 +32,7 @@ enter = Pin(5, Pin.IN, Pin.PULL_DOWN)     # Button for enter
 
 # Debouncing variables
 last_pressed_time = 0
-debounce_delay = DEBOUNCE_DELAY_MS // 2  # Adjusted for non-blocking debounce
+debounce_delay = 50  # Adjusted for non-blocking debounce
 radio_programming_timer = utime.ticks_ms()
 # RTC Setup
 rtc = RTC()
@@ -89,8 +89,8 @@ class Display:
                     icon.selected = True
                  
                     if ENTER and icon.state:
-                       
                         current_state = icon.state
+                        #current_state.update()
                         current_posx = current_state.start_posx
                         current_posy = current_state.start_posy
                         button_1.irq(handler=current_state.B1Handler, trigger=Pin.IRQ_FALLING)
@@ -224,7 +224,6 @@ class ClockState(State):
             if A_state != B_state:
                 if self.hour_adj.selected:
                     if hours+1<=23:
-                        print(self.timer)
                         rtc.datetime((year, month, day, weekday, (hours+1), minutes, seconds, subseconds))
                     else:
                         pass
@@ -242,7 +241,6 @@ class ClockState(State):
                     self.format_adj.text = self.format_time
                 if self.time_zone.selected:
                     if(self.zone<14):
-                        print(hours)
                         if(hours+1 > 23):
                             day+=1
                             weekday+=1
@@ -361,13 +359,12 @@ class RadioState(State):
             if A_state != B_state:
                 if(self.freq_adj.selected):
                  #  radio.seek_up() #THIS GOES TO THE NEXT CHANNEL
-                   radio.set_frequency_MHz(self.freq +0.1)
-                   self.freq +=0.1
-                   radio.update_rds()
-                   self.station = radio.station_name
-                   print(radio.radio_text)
-                   # Update the frequency displayed on the icon
-                   self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
+                   if(self.freq+0.1 <= 108):
+                       radio.set_frequency_MHz(self.freq +0.1)
+                       self.freq +=0.1
+                       radio.update_rds()
+                       # Update the frequency displayed on the icon
+                       self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
                 if(self.vol_adj.selected):
                     if(self.volume+1 <=15): 
                         radio.set_volume(self.volume+1 ) 
@@ -418,12 +415,13 @@ class RadioState(State):
                 
             else:
                 if(self.freq_adj.selected):
-                    radio.set_frequency_MHz(self.freq-0.1)
-                    self.freq-=0.1
-                    radio.update_rds()
-                    self.station = radio.radio_text
-                    # Update the frequency displayed on the icon
-                    self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
+                    if(self.freq-0.1 <= 88):
+                        radio.set_frequency_MHz(self.freq-0.1)
+                        self.freq-=0.1
+                        radio.update_rds()
+                        self.station = radio.radio_text
+                        # Update the frequency displayed on the icon
+                        self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
                 if(self.vol_adj.selected):
                     if(self.volume-1 >=0):
                         radio.set_volume( self.volume-1 )
@@ -631,7 +629,6 @@ class AlarmState(State):
         global current_state, current_posx, current_posy
         if debounce_handler(pin):
             if(current_posx <= 0):
-                print("in")
                 current_posy-=1
                 current_posx=0
             if(current_posy==0 and current_posx<=0):
@@ -684,9 +681,6 @@ class PlayALARM(State):
                    SNOOZE = [year, month, day, weekday, hours, minutes, seconds, subseconds]
                else:
                    SNOOZE = [year, month, day, weekday, hours, minutes+Alarm_s.snoozeLength, seconds, subseconds]
-                   
-               print(SNOOZE)
-               print("should set snooze")
     
             else:
                pass
@@ -723,15 +717,15 @@ class MainMenuState(State):
     def __init__(self):
         super().__init__()
         global icons
-        self.clock_but = Button("CLOCK", 1, 0, True, True)
+        self.clock_but = Button("CLOCK", 1, 0, False, True)
         self.radio_but = Button("RADIO", 1, 2, False, True)
-        self.alarm_but = Button("ALARM", 1, 4, False, True)
+        self.alarm_but = Button("ALARM", 1, 4, True, True)
         self.clock_but.configureState(Clock_s)
         self.radio_but.configureState(Radio_s)
         self.alarm_but.configureState(Alarm_s)
         self.icons = [self.radio_but, self.alarm_but, self.clock_but]
         self.start_posx = 1
-        self.start_posy = 0
+        self.start_posy = 4
         display.render(self.icons)
     def update(self):
         display.update_buttons(self.icons)
@@ -743,7 +737,12 @@ class MainMenuState(State):
                 current_posy = 4
             self.update()
             display.render(self.icons)
-    def B2Handler(self,pin):
+    
+    def ENCA(self,pin):
+        pass
+            
+    # Interrupt handler for EncoderB pin (optional, if needed)
+    def ENCB(self,pin):
         pass
 
 def debounce_handler(pin):
@@ -776,8 +775,8 @@ class ClockRadio:
         global Radio_s, current_state
         button_1.irq(handler=current_state.B1Handler, trigger=Pin.IRQ_FALLING)
         button_2.irq(handler=current_state.B2Handler, trigger=Pin.IRQ_FALLING)
-        EncoderA.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=Radio_s.ENCA)
-        EncoderB.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=Radio_s.ENCB)
+        EncoderA.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=current_state.ENCA)
+        EncoderB.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=current_state.ENCB)
         enter.irq(handler=Enter_Handler, trigger=Pin.IRQ_FALLING)
 
     def update(self, state):
@@ -813,7 +812,6 @@ Playalarm_s = PlayALARM()
 def check_for_alarm():
     global current_state, current_posx, current_posy, Playalarm_s
     if((Alarm_s.alarm_hour==rtc.datetime()[4] and Alarm_s.alarm_minute == rtc.datetime()[5] and rtc.datetime()[6]==0  and Alarm_s.is_on=="Y") or (SNOOZE[0] == rtc.datetime()[0] and SNOOZE[1] == rtc.datetime()[1] and SNOOZE[2] == rtc.datetime()[2] and SNOOZE[3] == rtc.datetime()[3] and SNOOZE[4] == rtc.datetime()[4] and  SNOOZE[5] == rtc.datetime()[5] and SNOOZE[6] == rtc.datetime()[6])):
-       print("should play alarm")
        change_state(Playalarm_s)
 while True:
     clock_radio.update(current_state)

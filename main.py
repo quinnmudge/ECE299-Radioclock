@@ -1,5 +1,7 @@
 
 from machine import Pin, SPI, I2C, RTC, Timer, PWM
+from buzzer_music import music
+from time import sleep
 import ssd1306
 import utime
 import rda5807
@@ -111,7 +113,7 @@ class Display:
             
                 self.SSD.text(icon.text, icon.xpos_text, icon.ypos_text, 1)
                 # Invert the region of the selected icon
-                if(len(icon.text)>5):
+                if(len(icon.text)==6):
                     self.invert_region(icon.xpos_text - 2, icon.ypos_text - 2, icon.width+5, icon.height)
                 else:
                     self.invert_region(icon.xpos_text - 2, icon.ypos_text - 2, icon.width, icon.height)
@@ -415,7 +417,7 @@ class RadioState(State):
                 
             else:
                 if(self.freq_adj.selected):
-                    if(self.freq-0.1 <= 88):
+                    if(self.freq-0.1 >= 88):
                         radio.set_frequency_MHz(self.freq-0.1)
                         self.freq-=0.1
                         radio.update_rds()
@@ -472,36 +474,36 @@ class AlarmState(State):
     def __init__(self):
         super().__init__()
         global rtc
-        self.alarmOn = Button("Alarm:",0,4,False,True)
-        self.snooze_adj = Button("Sleep:",0,3,False,True)
-        self.frequency_adj = Button("Freq:",0,2,False,True)
+        self.alarmOn = Button("Alarm",0,4,False,True)
+        self.snooze_adj = Button("Sleep",0,3,False,True)
+        self.song_adj = Button("Song",0,2,False,True)
         self.volume_adj = Button("Vol:",0,1,False,True)
-        self.volume = 1
+        self.volume = 3
         self.start_posx = 0
         self.start_posy = 5
         self.snoozeLength = 5
         self.alarm_hour = 0
         self.alarm_minute = 0
-        self.frequency = 1000
+        self.song_id = 1
         str_num = '{:02d}'.format(self.alarm_minute)
         self.volume_disp = Icon(" "+str(self.volume),1,1,False)
         self.alarm_disp = Icon(" "+str(self.alarm_hour)+":"+str_num,1,4,False)
         self.snooze_disp = Icon(" "+str(self.snoozeLength) + " Mins",1,3,False)
-        self.frequency_disp = Icon(" " + str(self.frequency)+"Hz",1,2,False)
+        self.song_disp = Icon(" " + str(self.song_id),1,2,False)
         self.hour_adj = Button("Hr.",1,5,False,True)
         self.minute_adj = Button("Min.",2,5,False,True)
         self.menu = Button("Menu",0,5,True,True)
         self.menu.configureState(Menu_s)
         self.is_on = "N"
         self.alarm_on = Icon("On: " + self.is_on,2,0,False)
-        self.icons = [self.alarm_on,self.volume_disp,self.alarm_disp,self.snooze_disp,self.hour_adj,self.minute_adj,self.menu,self.alarmOn,self.frequency_adj,self.frequency_disp,self.snooze_adj, self.volume_adj]
+        self.icons = [self.alarm_on,self.volume_disp,self.alarm_disp,self.snooze_disp,self.hour_adj,self.minute_adj,self.menu,self.alarmOn,self.song_adj,self.song_disp,self.snooze_adj, self.volume_adj]
         
     def update(self):
         self.menu.configureState(Menu_s)
         display.update_buttons(self.icons)
 
     def ENCA(self,pin):
-        global A_state, A_rising_edge, A_falling_edge, rotation_direction, radio
+        global A_state, A_rising_edge, A_falling_edge, rotation_direction, radio, mySong
        
         # Read current state of EncoderA and EncoderB pins
         A_state = EncoderA.value()
@@ -516,11 +518,12 @@ class AlarmState(State):
         # Check for both rising and falling edges on EncoderA
         if A_rising_edge and A_falling_edge:
             if A_state != B_state:
-                if(self.frequency_adj.selected):
-                    if(self.frequency+10 <= 10000):
-                        self.frequency +=10
+                if(self.song_adj.selected):
+                    if(self.song_id+1 <= 3):
+                        self.song_id +=1
                         # Update the frequency displayed on the icon
-                        self.frequency_disp.text = " " + str(self.frequency)+"Hz"
+                        mySong = music(songs[self.song_id-1], pins=[Pin(26)])
+                        self.song_disp.text = " " + str(self.song_id)
                 if(self.snooze_adj.selected):
                     if (self.snoozeLength+1 < 60 ):
                         self.snoozeLength+=1
@@ -552,7 +555,8 @@ class AlarmState(State):
                     if (self.volume + 1) <= 5:
                         self.volume += 1
                         self.volume_disp.text = " "+str(self.volume)
-
+                        mySong.duty = self.volume*2000 + 100
+        
                 display.render(self.icons)
             else:
                 pass
@@ -562,7 +566,7 @@ class AlarmState(State):
             A_falling_edge = False        
     # Interrupt handler for EncoderB pin (optional, if needed)
     def ENCB(self,pin):
-        global B_state, B_rising_edge, B_falling_edge, rotation_direction
+        global B_state, B_rising_edge, B_falling_edge, rotation_direction, mySong
         # Read current state of EncoderA and EncoderB pins
         A_state = EncoderA.value()
         B_state = EncoderB.value()
@@ -577,11 +581,12 @@ class AlarmState(State):
                 pass
             else:
                  #DECREASE LOGIC
-                if(self.frequency_adj.selected):
-                    if(self.frequency-10 >= 0):
-                       self.frequency -=10
+                if(self.song_adj.selected):
+                    if(self.song_id-1 >= 1):
+                        self.song_id -=1
+                        self.song_disp.text = " " + str(self.song_id)
+                        mySong = music(songs[self.song_id-1], pins=[Pin(26)])
                     # Update the frequency displayed on the icon
-                       self.frequency_disp.text = " " + str(self.frequency)+"Hz"
                 if(self.snooze_adj.selected):
                     if (self.snoozeLength-1 >0 ):
                         self.snoozeLength-=1
@@ -617,6 +622,9 @@ class AlarmState(State):
                     if(self.volume - 1 >= 0):
                         self.volume -= 1
                         self.volume_disp.text = " "+str(self.volume)
+                        mySong.duty = self.volume*2000 + 100
+
+
                 display.render(self.icons)
 
             
@@ -658,7 +666,7 @@ class PlayALARM(State):
     def B2Handler(self,pin):
         pass
     def ENCA(self,pin):
-        global A_state, A_rising_edge, A_falling_edge, rotation_direction,current_state, Clock_s,SNOOZE, rtc
+        global A_state, A_rising_edge, A_falling_edge, rotation_direction,current_state, Clock_s,SNOOZE, rtc, mySong
        
         # Read current state of EncoderA and EncoderB pins
         A_state = EncoderA.value()
@@ -684,14 +692,14 @@ class PlayALARM(State):
     
             else:
                pass
-            
+            mySong.stop()
             # Reset edge detection flags
             A_rising_edge = False
             A_falling_edge = False
             
     # Interrupt handler for EncoderB pin (optional, if needed)
     def ENCB(self,pin):
-        global B_state, B_rising_edge, B_falling_edge, rotation_direction, current_state,SNOOZE
+        global B_state, B_rising_edge, B_falling_edge, rotation_direction, current_state,SNOOZE, mySong
         # Read current state of EncoderA and EncoderB pins
         A_state = EncoderA.value()
         B_state = EncoderB.value()
@@ -708,6 +716,7 @@ class PlayALARM(State):
                 #DECREASE LOGIC
                 change_state(Clock_s)
                 SNOOZE = [0,0,0,0,0,0,0,0]
+            mySong.stop()
             # Reset edge detection flags (reset finite state machine)
             B_rising_edge = False
             B_falling_edge = False
@@ -809,6 +818,15 @@ current_state = Menu_s
 clock_radio = ClockRadio()
 Playalarm_s = PlayALARM()
 
+#    https://onlinesequencer.net/195547
+song1 = '0 A#4 1 1;2 F5 1 1;4 D#5 1 1;8 D5 1 1;11 D5 1 1;6 A#4 1 1;14 D#5 1 1;18 A#4 1 1;20 D#5 1 1;22 A#4 1 1;24 D5 1 1;27 D5 1 1;30 D#5 1 1;32 A#4 1 1;34 F5 1 1;36 D#5 1 1;38 A#4 1 1;40 D5 1 1;43 D5 1 1;46 D#5 1 1;50 A#4 1 1;52 D#5 1 1;54 G5 1 1;56 F5 1 1;59 D#5 1 1;62 F5 1 1;64 A#4 1 1;66 F5 1 1;68 D#5 1 1;70 A#4 1 1;72 D5 1 1;75 D5 1 1;78 D#5 1 1;82 A#4 1 1;84 D#5 1 1;86 A#4 1 1;88 D5 1 1;91 D5 1 1;94 D#5 1 1;96 A#4 1 1;100 D#5 1 1;102 A#4 1 1;104 D5 1 1;107 D5 1 1;110 D#5 1 1;114 A#4 1 1;116 D#5 1 1;118 G5 1 1;120 F5 1 1;123 D#5 1 1;126 F5 1 1;98 F5 1 1'
+#    https://onlinesequencer.net/1864273
+song2 = '0 D5 4 14;4 A5 4 14;8 C6 4 14;12 B5 4 14;16 G5 2 14;18 F5 2 14;20 E5 2 14;22 F5 2 14;24 G5 8 14;4 E5 8 16;4 C5 8 16;4 F4 8 16;12 D5 8 16;12 B4 8 16;12 E4 8 16;20 C5 8 16;20 A4 8 16;20 D4 8 16;0 E4 4 16;0 B4 4 16;28 E4 4 16;28 B4 4 16'
+#    https://onlinesequencer.net/1864297 - Tetris
+song3 = '0 E3 1 0;2 E4 1 0;4 E3 1 0;6 E4 1 0;8 E3 1 0;10 E4 1 0;12 E3 1 0;14 E4 1 0;16 A3 1 0;18 A4 1 0;20 A3 1 0;22 A4 1 0;24 A3 1 0;26 A4 1 0;28 A3 1 0;30 A4 1 0;32 G#3 1 0;34 G#4 1 0;36 G#3 1 0;38 G#4 1 0;40 E3 1 0;42 E4 1 0;44 E3 1 0;46 E4 1 0;48 A3 1 0;50 A4 1 0;52 A3 1 0;54 A4 1 0;56 A3 1 0;58 B3 1 0;60 C4 1 0;62 D4 1 0;64 D3 1 0;66 D4 1 0;68 D3 1 0;70 D4 1 0;72 D3 1 0;74 D4 1 0;76 D3 1 0;78 D4 1 0;80 C3 1 0;82 C4 1 0;84 C3 1 0;86 C4 1 0;88 C3 1 0;90 C4 1 0;92 C3 1 0;94 C4 1 0;96 G2 1 0;98 G3 1 0;100 G2 1 0;102 G3 1 0;104 E3 1 0;106 E4 1 0;108 E3 1 0;110 E4 1 0;114 A4 1 0;112 A3 1 0;116 A3 1 0;118 A4 1 0;120 A3 1 0;122 A4 1 0;124 A3 1 0;0 E6 1 1;4 B5 1 1;6 C6 1 1;8 D6 1 1;10 E6 1 1;11 D6 1 1;12 C6 1 1;14 B5 1 1;0 E5 1 6;4 B4 1 6;6 C5 1 6;8 D5 1 6;10 E5 1 6;11 D5 1 6;12 C5 1 6;14 B4 1 6;16 A5 1 1;20 A5 1 1;22 C6 1 1;24 E6 1 1;28 D6 1 1;30 C6 1 1;32 B5 1 1;36 B5 1 1;36 B5 1 1;37 B5 1 1;38 C6 1 1;40 D6 1 1;44 E6 1 1;48 C6 1 1;52 A5 1 1;56 A5 1 1;20 A4 1 6;16 A4 1 6;22 C5 1 6;24 E5 1 6;28 D5 1 6;30 C5 1 6;32 B4 1 6;36 B4 1 6;37 B4 1 6;38 C5 1 6;40 D5 1 6;44 E5 1 6;48 C5 1 6;52 A4 1 6;56 A4 1 6;64 D5 1 6;64 D6 1 1;68 D6 1 1;70 F6 1 1;72 A6 1 1;76 G6 1 1;78 F6 1 1;80 E6 1 1;84 E6 1 1;86 C6 1 1;88 E6 1 1;92 D6 1 1;94 C6 1 1;96 B5 1 1;100 B5 1 1;101 B5 1 1;102 C6 1 1;104 D6 1 1;108 E6 1 1;112 C6 1 1;116 A5 1 1;120 A5 1 1;72 A5 1 6;80 E5 1 6;68 D5 1 7;70 F5 1 7;76 G5 1 7;84 E5 1 7;78 F5 1 7;86 C5 1 7;88 E5 1 6;96 B4 1 6;104 D5 1 6;112 C5 1 6;120 A4 1 6;92 D5 1 7;94 C5 1 7;100 B4 1 7;101 B4 1 7;102 C5 1 7;108 E5 1 7;116 A4 1 7'
+songs = [song1, song2, song3]
+mySong = music(songs[Alarm_s.song_id-1], pins=[Pin(26)])
+
 def check_for_alarm():
     global current_state, current_posx, current_posy, Playalarm_s
     if((Alarm_s.alarm_hour==rtc.datetime()[4] and Alarm_s.alarm_minute == rtc.datetime()[5] and rtc.datetime()[6]==0  and Alarm_s.is_on=="Y") or (SNOOZE[0] == rtc.datetime()[0] and SNOOZE[1] == rtc.datetime()[1] and SNOOZE[2] == rtc.datetime()[2] and SNOOZE[3] == rtc.datetime()[3] and SNOOZE[4] == rtc.datetime()[4] and  SNOOZE[5] == rtc.datetime()[5] and SNOOZE[6] == rtc.datetime()[6])):
@@ -820,25 +838,29 @@ while True:
     if(isinstance(current_state,PlayALARM)):
         radio.mute(True)
         radio.update_rds()
-        pwm = PWM(Pin(26))
-        # Set the frequency of the PWM signal
-        count=0
-        while(count<2):
-            pwm.freq(Alarm_s.frequency)
-        # Set the duty cycle to 50% (range is 0 to 65535, so 32767 is 50%)
-            pwm.duty_u16(Alarm_s.volume*8100 + 100)
-        # Wait for 0.5 seconds
-            utime.sleep(0.5)
-            pwm.duty_u16(0)
-            utime.sleep(0.5)
-            count+=1
+        mySong.tick()
+        sleep(0.04)
+        
+#         pwm = PWM(Pin(26))
+#         # Set the frequency of the PWM signal
+#         count=0
+#         while(count<2):
+#             pwm.freq(Alarm_s.frequency)
+#         # Set the duty cycle to 50% (range is 0 to 65535, so 32767 is 50%)
+#             pwm.duty_u16(Alarm_s.volume*8100 + 100)
+#         # Wait for 0.5 seconds
+#             utime.sleep(0.5)
+#             pwm.duty_u16(0)
+#             utime.sleep(0.5)
+#             count+=1
+        
         if(Radio_s.is_on =="Y"):
             radio.mute(False)
             radio.update_rds()
         # Turn off the PWM signal by setting the duty cycle to 0
-        pwm.duty_u16(0)
-        
-        # Deinitialize the PWM to free up the GPIO pin
-        pwm.deinit()
-        
+#         pwm.duty_u16(0)
+#         
+#         # Deinitialize the PWM to free up the GPIO pin
+#         pwm.deinit()
+#         
         

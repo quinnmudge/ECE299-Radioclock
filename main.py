@@ -481,7 +481,7 @@ class AlarmState(State):
         self.volume = 3
         self.start_posx = 0
         self.start_posy = 5
-        self.snoozeLength = 5
+        self.snoozeLength = 1
         self.alarm_hour = 0
         self.alarm_minute = 0
         self.song_id = 1
@@ -831,6 +831,7 @@ def check_for_alarm():
     global current_state, current_posx, current_posy, Playalarm_s
     if((Alarm_s.alarm_hour==rtc.datetime()[4] and Alarm_s.alarm_minute == rtc.datetime()[5] and rtc.datetime()[6]==0  and Alarm_s.is_on=="Y") or (SNOOZE[0] == rtc.datetime()[0] and SNOOZE[1] == rtc.datetime()[1] and SNOOZE[2] == rtc.datetime()[2] and SNOOZE[3] == rtc.datetime()[3] and SNOOZE[4] == rtc.datetime()[4] and  SNOOZE[5] == rtc.datetime()[5] and SNOOZE[6] == rtc.datetime()[6])):
        change_state(Playalarm_s)
+       mySong.resume()
 while True:
     clock_radio.update(current_state)
     check_for_alarm()

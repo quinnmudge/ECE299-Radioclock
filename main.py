@@ -1,4 +1,3 @@
-
 from machine import Pin, SPI, I2C, RTC, Timer, PWM
 from buzzer_music import music
 from time import sleep
@@ -41,6 +40,8 @@ rtc = RTC()
 rtc.datetime((2024, 7, 10, 0, 0, 0, 0, 0))  # Set initial RTC time (year, month, day, weekday, hours, minutes, seconds, subseconds)
 SNOOZE = [0,0,0,0,0,0,0,0]
 
+def floats_are_equal(a: float, b: float, tolerance: float = 1e-9) -> bool:
+    return abs(a - b) <= tolerance
 
 class Icon:
     def __init__(self, txt, pos_x, pos_y, border):
@@ -322,10 +323,11 @@ class RadioState(State):
         global radio, Menu_s
         #_, _, frequency, _ = radio.GetSettings()
         self.freq = 101.9
-        self.volume = 3
+        self.volume = 2
         self.is_on = "N"
+        self.stationName = ""
         self.radioOn = Button("On: " + self.is_on,1,0,False,True)
-        self.station = Icon("CFUV",1,4,False)
+        self.station = Icon(str(self.stationName),1,4,False)
         self.frequency_text = Icon("Freq:",0,3,False)
         self.volume_text = Icon("Volume:",0,2,False)
         self.seek = Button("Seek",0,0,False,True)
@@ -335,14 +337,45 @@ class RadioState(State):
         self.vol_adj = Button("Vol.",1,5,False,True)
         self.vol_disp = Icon(str(self.volume),2,2,False)
         self.freq_adj = Button("Freq.",2,5,False,True)
-        self.icons = [self.frequ_disp, self.menu, self.vol_adj, self.freq_adj,self.vol_disp,self.frequency_text, self.volume_text,self.radioOn, self.seek]
+        self.icons = [self.frequ_disp, self.menu, self.vol_adj, self.freq_adj,self.vol_disp,self.frequency_text, self.volume_text,self.radioOn, self.seek, self.station]
         self.start_posx = 0
         self.start_posy = 5
    
     def update(self):
         self.menu.configureState(Menu_s)
         display.update_buttons(self.icons)
-        
+    
+    def setStationName(self):
+        if (self.freq == 101.9):
+            self.station.text = "CFUV"
+        elif(self.freq == 88.9):
+            self.station.text = "CBUX"
+        elif(self.freq == 90.5):
+            self.station.text = "CBCV"
+        elif(self.freq == 91.3):
+            self.station.text = "CJZN"
+        elif(self.freq == 92.1):
+            self.station.text = "CBU"
+        elif(self.freq == 98.5):
+            self.station.text = "CIOC"
+        elif(self.freq == 99.7):
+            self.station.text = "CBUF"
+        elif(self.freq == 100.3):
+            self.station.text = "CKKQ"
+        elif(self.freq == 103.1):
+            self.station.text = "CHTT"
+        elif(self.freq == 106.5):
+            self.station.text = "KWPZ"
+        elif(self.freq == 107.3):
+            self.station.text = "CHBE"
+        elif(self.freq == 107.9):
+            self.station.text = "CILS"
+        elif(self.freq == 104.1):
+            self.station.text = "KAFE"
+        else:
+            self.station.text = ""
+                
+    
     def ENCA(self,pin):
         global A_state, A_rising_edge, A_falling_edge, rotation_direction, radio
        
@@ -367,6 +400,7 @@ class RadioState(State):
                        radio.update_rds()
                        # Update the frequency displayed on the icon
                        self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
+                       self.setStationName()                   
                 if(self.vol_adj.selected):
                     if(self.volume+1 <=5): 
                         radio.set_volume(self.volume+1 ) 
@@ -386,9 +420,9 @@ class RadioState(State):
                         radio.update_rds()
                 if(self.seek.selected):
                     radio.seek_up()
-                    self.station = radio.station_name
                     self.freq = radio.get_frequency_MHz()
                     self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
+                    self.setStationName()                    
                 display.render(self.icons)
             else:
                pass
@@ -421,9 +455,10 @@ class RadioState(State):
                         radio.set_frequency_MHz(self.freq-0.1)
                         self.freq-=0.1
                         radio.update_rds()
-                        self.station = radio.radio_text
                         # Update the frequency displayed on the icon
                         self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
+                        self.setStationName()                  
+
                 if(self.vol_adj.selected):
                     if(self.volume-1 >=0):
                         radio.set_volume( self.volume-1 )
@@ -444,8 +479,9 @@ class RadioState(State):
                 if(self.seek.selected):
                     radio.seek_down()
                     self.freq = radio.get_frequency_MHz()
-                    self.station = radio.station_name
                     self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
+                    self.setStationName()                    
+
                 display.render(self.icons)
                 
             # Reset edge detection flags
@@ -844,4 +880,5 @@ while True:
         if(Radio_s.is_on =="Y"):
             radio.mute(False)
             radio.update_rds()
+
 

@@ -368,7 +368,7 @@ class RadioState(State):
                        # Update the frequency displayed on the icon
                        self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
                 if(self.vol_adj.selected):
-                    if(self.volume+1 <=15): 
+                    if(self.volume+1 <=5): 
                         radio.set_volume(self.volume+1 ) 
                         radio.update_rds()
                         self.volume+=1
@@ -840,28 +840,8 @@ while True:
         radio.mute(True)
         radio.update_rds()
         mySong.tick()
-        sleep(0.04)
-        
-#         pwm = PWM(Pin(26))
-#         # Set the frequency of the PWM signal
-#         count=0
-#         while(count<2):
-#             pwm.freq(Alarm_s.frequency)
-#         # Set the duty cycle to 50% (range is 0 to 65535, so 32767 is 50%)
-#             pwm.duty_u16(Alarm_s.volume*8100 + 100)
-#         # Wait for 0.5 seconds
-#             utime.sleep(0.5)
-#             pwm.duty_u16(0)
-#             utime.sleep(0.5)
-#             count+=1
-        
+        sleep(0.04)       
         if(Radio_s.is_on =="Y"):
             radio.mute(False)
             radio.update_rds()
-        # Turn off the PWM signal by setting the duty cycle to 0
-#         pwm.duty_u16(0)
-#         
-#         # Deinitialize the PWM to free up the GPIO pin
-#         pwm.deinit()
-#         
-        
+

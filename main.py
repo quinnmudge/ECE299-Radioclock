@@ -1,3 +1,4 @@
+
 from machine import Pin, SPI, I2C, RTC, Timer, PWM
 from buzzer_music import music
 from time import sleep
@@ -40,7 +41,7 @@ rtc = RTC()
 rtc.datetime((2024, 7, 10, 0, 0, 0, 0, 0))  # Set initial RTC time (year, month, day, weekday, hours, minutes, seconds, subseconds)
 SNOOZE = [0,0,0,0,0,0,0,0]
 
-def floats_are_equal(a: float, b: float, tolerance: float = 1e-9) -> bool:
+def floats_are_equal(a: float, b: float, tolerance: float = 0.05) -> bool:
     return abs(a - b) <= tolerance
 
 class Icon:
@@ -210,7 +211,7 @@ class ClockState(State):
             display.render(self.icons)
             
     def ENCA(self, pin):
-        global A_state, A_rising_edge, A_falling_edge, rotation_direction, radio, rtc
+        global A_state, A_rising_edge, A_falling_edge, rotation_direction, radio, rtc,SNOOZE
         # Read current state of EncoderA and EncoderB pins
         A_state = EncoderA.value()
         B_state = EncoderB.value()
@@ -228,11 +229,23 @@ class ClockState(State):
                 if self.hour_adj.selected:
                     if hours+1<=23:
                         rtc.datetime((year, month, day, weekday, (hours+1), minutes, seconds, subseconds))
+                        if(minutes + Alarm_s.snoozeLength >= 60):
+                           hours+=1
+                           minutes = (minutes + Alarm_s.snoozeLength) % 60
+                           SNOOZE = [year, month, day, weekday, hours+1, minutes, seconds, subseconds]
+                        else:
+                           SNOOZE = [year, month, day, weekday, hours+1, minutes+Alarm_s.snoozeLength, seconds, subseconds]
                     else:
                         pass
                 if self.min_adj.selected:
                     if minutes+1<=59:
                         rtc.datetime((year, month, day, weekday, hours, (minutes+1), seconds, subseconds))
+                        if(minutes + Alarm_s.snoozeLength >= 60):
+                           hours+=1
+                           minutes = (minutes + Alarm_s.snoozeLength) % 60
+                           SNOOZE = [year, month, day, weekday, hours, minutes+1, seconds, subseconds]
+                        else:
+                           SNOOZE = [year, month, day, weekday, hours, minutes+Alarm_s.snoozeLength+1, seconds, subseconds]
                     else:
                         pass
                 if self.format_adj.selected:
@@ -250,6 +263,12 @@ class ClockState(State):
                             hours = -1
                         self.zone+=1
                         rtc.datetime((year, month, day, weekday, (hours+1), minutes, seconds, subseconds))
+                        if(minutes + Alarm_s.snoozeLength >= 60):
+                           hours+=1
+                           minutes = (minutes + Alarm_s.snoozeLength) % 60
+                           SNOOZE = [year, month, day, weekday, hours+1, minutes, seconds, subseconds]
+                        else:
+                           SNOOZE = [year, month, day, weekday, hours+1, minutes+Alarm_s.snoozeLength, seconds, subseconds]
                         self.time_zone.text = "UTC"+str(self.zone)
             else:
                 pass
@@ -262,7 +281,7 @@ class ClockState(State):
 
     # Interrupt handler for EncoderB pin (optional, if needed)
     def ENCB(self, pin):
-        global B_state, B_rising_edge, B_falling_edge, rotation_direction, radio
+        global B_state, B_rising_edge, B_falling_edge, rotation_direction, radio, SNOOZE
         # Read current state of EncoderA and EncoderB pins
         A_state = EncoderA.value()
         B_state = EncoderB.value()
@@ -282,6 +301,13 @@ class ClockState(State):
                 if self.hour_adj.selected:
                     if hours-1>=0 :
                         rtc.datetime((year, month, day, weekday, (hours-1), minutes, seconds, subseconds))
+                        if(minutes + Alarm_s.snoozeLength >= 60):
+                           hours+=1
+                           minutes = (minutes + Alarm_s.snoozeLength) % 60
+                           SNOOZE = [year, month, day, weekday, hours-1, minutes, seconds, subseconds]
+                        else:
+                           SNOOZE = [year, month, day, weekday, hours-1, minutes+Alarm_s.snoozeLength, seconds, subseconds]
+                            
                     else:
                         pass
                    
@@ -289,6 +315,12 @@ class ClockState(State):
                     year, month, day, weekday, hours, minutes, seconds, subseconds = rtc.datetime()
                     if minutes -1>=0:
                         rtc.datetime((year, month, day, weekday, hours, (minutes-1), seconds, subseconds))
+                        if(minutes + Alarm_s.snoozeLength >= 60):
+                           hours+=1
+                           minutes = (minutes + Alarm_s.snoozeLength) % 60
+                           SNOOZE = [year, month, day, weekday, hours, minutes-1, seconds, subseconds]
+                        else:
+                           SNOOZE = [year, month, day, weekday, hours, minutes+Alarm_s.snoozeLength-1, seconds, subseconds]
                     else:
                         pass
                 if self.format_adj.selected:
@@ -308,6 +340,12 @@ class ClockState(State):
                         self.zone-=1
                         
                         rtc.datetime((year, month, day, weekday, (hours-1), minutes, seconds, subseconds))
+                        if(minutes + Alarm_s.snoozeLength >= 60):
+                           hours+=1
+                           minutes = (minutes + Alarm_s.snoozeLength) % 60
+                           SNOOZE = [year, month, day, weekday, hours-1, minutes, seconds, subseconds]
+                        else:
+                           SNOOZE = [year, month, day, weekday, hours-1, minutes+Alarm_s.snoozeLength, seconds, subseconds]
                         self.time_zone.text = "UTC"+str(self.zone)
                       
                 
@@ -323,9 +361,9 @@ class RadioState(State):
         global radio, Menu_s
         #_, _, frequency, _ = radio.GetSettings()
         self.freq = 101.9
-        self.volume = 2
+        self.volume = 1
         self.is_on = "N"
-        self.stationName = ""
+        self.stationName = "CFUV"
         self.radioOn = Button("On: " + self.is_on,1,0,False,True)
         self.station = Icon(str(self.stationName),1,4,False)
         self.frequency_text = Icon("Freq:",0,3,False)
@@ -346,31 +384,31 @@ class RadioState(State):
         display.update_buttons(self.icons)
     
     def setStationName(self):
-        if (self.freq == 101.9):
+        if (floats_are_equal(self.freq , 101.9)):
             self.station.text = "CFUV"
-        elif(self.freq == 88.9):
+        elif(floats_are_equal(self.freq , 88.9)):
             self.station.text = "CBUX"
-        elif(self.freq == 90.5):
+        elif(floats_are_equal(self.freq , 90.5)):
             self.station.text = "CBCV"
-        elif(self.freq == 91.3):
+        elif(floats_are_equal(self.freq , 91.3)):
             self.station.text = "CJZN"
-        elif(self.freq == 92.1):
+        elif(floats_are_equal(self.freq , 92.1)):
             self.station.text = "CBU"
-        elif(self.freq == 98.5):
+        elif(floats_are_equal(self.freq , 98.5)):
             self.station.text = "CIOC"
-        elif(self.freq == 99.7):
+        elif(floats_are_equal(self.freq , 99.7)):
             self.station.text = "CBUF"
-        elif(self.freq == 100.3):
+        elif(floats_are_equal(self.freq , 100.3)):
             self.station.text = "CKKQ"
-        elif(self.freq == 103.1):
+        elif(floats_are_equal(self.freq , 103.1)):
             self.station.text = "CHTT"
-        elif(self.freq == 106.5):
+        elif(floats_are_equal(self.freq , 106.5)):
             self.station.text = "KWPZ"
-        elif(self.freq == 107.3):
+        elif(floats_are_equal(self.freq , 107.3)):
             self.station.text = "CHBE"
-        elif(self.freq == 107.9):
+        elif(floats_are_equal(self.freq , 107.9)):
             self.station.text = "CILS"
-        elif(self.freq == 104.1):
+        elif(floats_are_equal(self.freq , 104.1)):
             self.station.text = "KAFE"
         else:
             self.station.text = ""
@@ -400,7 +438,9 @@ class RadioState(State):
                        radio.update_rds()
                        # Update the frequency displayed on the icon
                        self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
-                       self.setStationName()                   
+                       self.setStationName()
+                       print(self.freq)
+                       print(floats_are_equal(self.freq,100.3))
                 if(self.vol_adj.selected):
                     if(self.volume+1 <=5): 
                         radio.set_volume(self.volume+1 ) 

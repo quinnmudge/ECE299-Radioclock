@@ -24,7 +24,6 @@ current_posy = 4
 grid_size_x = 42
 grid_size_y = 10
 ENTER = False
-LAST_ENTER = False
 
 
 # Define button pins

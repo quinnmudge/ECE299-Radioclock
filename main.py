@@ -45,21 +45,27 @@ def floats_are_equal(a: float, b: float, tolerance: float = 0.05) -> bool:
 
 class Icon:
     def __init__(self, txt, pos_x, pos_y, border):
+        #text displayed by the icon
         self.text = txt
+        #position of the icon on the screen
         self.xpos_text = pos_x * grid_size_x + 2
         self.ypos_text = pos_y * grid_size_y + 2
+        #width and height of the icon's border
         self.width = grid_size_x + 2
         self.height = grid_size_y + 2
+        #decide whether to show border (white rectangle) or not
         self.has_border = border
-
+        
 class Button(Icon):
     def __init__(self, txt, pos_x, pos_y, select, has_border):
         super().__init__(txt, pos_x, pos_y, has_border)
         self.grid_x = pos_x
         self.grid_y = pos_y
+        #used to track if the selector's position matches the button's position
         self.selected = select
+        #track what state change should occur when button is pressed
         self.state = None  # Initially no state assigned
-
+    #setter function to set the "state" member
     def configureState(self, the_state):
         self.state = the_state
 
@@ -85,16 +91,21 @@ class Display:
 
     def update_buttons(self, icons):
         global current_state, ENTER, current_posx, current_posy
-        
+        #loop over the list of icons being rendered
         for icon in icons:
+            #only buttons have functionality and must be updated
             if isinstance(icon, Button):
+                #if the button position matches the selector position set "selected" 
+                #boolean True
                 if icon.grid_x == current_posx and icon.grid_y == current_posy:
                     icon.selected = True
-                 
+                   # if the encoder button has been pressed and the 
+                    # selected button has a state assigned, change states
                     if ENTER and icon.state:
                         current_state = icon.state
                         #current_state.update()
                         change_state(current_state)
+                    #reset enter variable (to wait for next encoder button press)
                     ENTER = False
                 else:
                     icon.selected = False
@@ -848,6 +859,7 @@ def change_state(state):
     button_1.irq(handler=current_state.B1Handler, trigger=Pin.IRQ_FALLING)
     current_state.update()
     display.render(current_state.icons)
+    
 class ClockRadio:
     def __init__(self):
         global Radio_s, current_state

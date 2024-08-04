@@ -435,23 +435,14 @@ class RadioState(State):
         # Check for both rising and falling edges on EncoderA
         if A_rising_edge and A_falling_edge:
             if A_state != B_state:
-                if(self.freq_adj.selected):
-                 #  radio.seek_up() #THIS GOES TO THE NEXT CHANNEL
-                   if(self.freq+0.1 <= 108):
-                       radio.set_frequency_MHz(self.freq +0.1)
-                       self.freq +=0.1
-                       radio.update_rds()
-                       # Update the frequency displayed on the icon
-                       self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
-                       self.setStationName()
-                       print(self.freq)
-                       print(floats_are_equal(self.freq,100.3))
+                #adjust volume
                 if(self.vol_adj.selected):
                     if(self.volume+1 <=5): 
                         radio.set_volume(self.volume+1 ) 
                         radio.update_rds()
                         self.volume+=1
                         self.vol_disp.text = str(self.volume)
+                #turn radio on and off        
                 if(self.radioOn.selected):
                     if(self.is_on == "N"):
                         self.is_on = "Y"
@@ -463,11 +454,23 @@ class RadioState(State):
                         self.radioOn.text = "On: " + self.is_on
                         radio.mute(True)
                         radio.update_rds()
+                 #adjust frequency       
+                 if(self.freq_adj.selected):
+         
+                   if(self.freq+0.1 <= 108):
+                       radio.set_frequency_MHz(self.freq +0.1)
+                       self.freq +=0.1
+                       radio.update_rds()
+                       # Update the frequency displayed on the icon
+                       self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
+                       self.setStationName()
+                #seek up        
                 if(self.seek.selected):
                     radio.seek_up()
                     self.freq = radio.get_frequency_MHz()
                     self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
-                    self.setStationName()                    
+                    self.setStationName() 
+                #render updated information to display    
                 display.render(self.icons)
             else:
                pass

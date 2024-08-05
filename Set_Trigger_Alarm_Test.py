@@ -415,7 +415,256 @@ def change_state(state):
     button_1.irq(handler=current_state.B1Handler, trigger=Pin.IRQ_FALLING)
     current_state.update()
     display.render(current_state.icons)
+class AlarmState(State):
+    def __init__(self):
+        super().__init__()
+        global rtc
+        self.alarmOn = Button("Alarm",0,4,False,True)
+        self.snooze_adj = Button("Sleep",0,3,False,True)
+        self.song_adj = Button("Song",0,2,False,True)
+        self.volume_adj = Button("Vol:",0,1,False,True)
+        self.volume = 3
+        self.start_posx = 0
+        self.start_posy = 5
+        self.snoozeLength = 1
+        self.alarm_hour = 0
+        self.alarm_minute = 0
+        self.song_id = 1
+        str_num = '{:02d}'.format(self.alarm_minute)
+        self.volume_disp = Icon(" "+str(self.volume),1,1,False)
+        self.alarm_disp = Icon(" "+str(self.alarm_hour)+":"+str_num,1,4,False)
+        self.snooze_disp = Icon(" "+str(self.snoozeLength) + " Mins",1,3,False)
+        self.song_disp = Icon(" " + str(self.song_id),1,2,False)
+        self.hour_adj = Button("Hr.",1,5,False,True)
+        self.minute_adj = Button("Min.",2,5,False,True)
+        self.menu = Button("Menu",0,5,True,True)
+        self.menu.configureState(Menu_s)
+        self.is_on = "N"
+        self.alarm_on = Icon("On: " + self.is_on,2,0,False)
+        self.icons = [self.alarm_on,self.volume_disp,self.alarm_disp,self.snooze_disp,self.hour_adj,self.minute_adj,self.menu,self.alarmOn,self.song_adj,self.song_disp,self.snooze_adj, self.volume_adj]
+        
+    def update(self):
+        self.menu.configureState(Menu_s)
+        display.update_buttons(self.icons)
+
+    def ENCA(self,pin):
+        global A_state, A_rising_edge, A_falling_edge, rotation_direction, radio, mySong
+       
+        # Read current state of EncoderA and EncoderB pins
+        A_state = EncoderA.value()
+        B_state = EncoderB.value()
+        
+        # Determine edge detection on EncoderA
+        if A_state == 1 and B_state == 0:
+            A_rising_edge = True
+        elif A_state == 0 and B_state == 1:
+            A_falling_edge = True
+        
+        # Check for both rising and falling edges on EncoderA
+        if A_rising_edge and A_falling_edge:
+            if A_state != B_state:
+                if(self.song_adj.selected):
+                    if(self.song_id+1 <= 3):
+                        self.song_id +=1
+                        # Update the frequency displayed on the icon
+                        mySong = music(songs[self.song_id-1], pins=[Pin(26)])
+                        self.song_disp.text = " " + str(self.song_id)
+                if(self.snooze_adj.selected):
+                    if (self.snoozeLength+1 < 60 ):
+                        self.snoozeLength+=1
+                        self.snooze_disp.text = " "+str(self.snoozeLength) + " Mins"
+                if self.hour_adj.selected:
+                    if self.alarm_hour+1<=23:
+                        self.alarm_hour+=1
+                        str_num = '{:02d}'.format(self.alarm_minute)
+                        if(Clock_s.format_time=="24h"):
+                            self.alarm_disp.text = " "+str(self.alarm_hour)+":"+str_num
+                        else:
+                            self.alarm_disp.text = " "+self.convert_to_12h(self.alarm_hour,self.alarm_minute)
+                if self.minute_adj.selected:
+                    if self.alarm_minute+1<=59:
+                        self.alarm_minute+=1
+                        str_num = '{:02d}'.format(self.alarm_minute)
+                        if(Clock_s.format_time=="24h"):
+                            self.alarm_disp.text = " "+str(self.alarm_hour)+":"+str_num
+                        else:
+                            self.alarm_disp.text = " "+self.convert_to_12h(self.alarm_hour,self.alarm_minute)
+                if(self.alarmOn.selected):
+                    if(self.is_on == "N"):
+                        self.is_on = "Y"
+                        self.alarm_on.text = "On: " + self.is_on
+                    else:
+                        self.is_on = "N"
+                        self.alarm_on.text = "On: " + self.is_on
+                if self.volume_adj.selected:
+                    if (self.volume + 1) <= 5:
+                        self.volume += 1
+                        self.volume_disp.text = " "+str(self.volume)
+                        mySong.duty = self.volume*2000 + 100
+        
+                display.render(self.icons)
+            else:
+                pass
+            
+            # Reset edge detection flags
+            A_rising_edge = False
+            A_falling_edge = False        
+    # Interrupt handler for EncoderB pin (optional, if needed)
+    def ENCB(self,pin):
+        global B_state, B_rising_edge, B_falling_edge, rotation_direction, mySong
+        # Read current state of EncoderA and EncoderB pins
+        A_state = EncoderA.value()
+        B_state = EncoderB.value()
+        # Determine edge detection on EncoderB
+        if B_state == 1 and A_state == 0:
+            B_rising_edge = True
+        elif B_state == 0 and A_state == 1:
+            B_falling_edge = True
+        # Check for both rising and falling edges on EncoderB
+        if B_rising_edge and B_falling_edge:
+            if A_state == B_state:
+                pass
+            else:
+                 #DECREASE LOGIC
+                if(self.song_adj.selected):
+                    if(self.song_id-1 >= 1):
+                        self.song_id -=1
+                        self.song_disp.text = " " + str(self.song_id)
+                        mySong = music(songs[self.song_id-1], pins=[Pin(26)])
+                    # Update the frequency displayed on the icon
+                if(self.snooze_adj.selected):
+                    if (self.snoozeLength-1 >0 ):
+                        self.snoozeLength-=1
+                        self.snooze_disp.text = " "+str(self.snoozeLength) + " Mins"
+                if self.hour_adj.selected:
+                    if self.alarm_hour-1>=0:
+                        self.alarm_hour-=1
+                        str_num = '{:02d}'.format(self.alarm_minute)
+                        if(Clock_s.format_time=="24h"):
+                            self.alarm_disp.text = " "+str(self.alarm_hour)+":"+str_num
+                        else:
+                            self.alarm_disp.text = " "+self.convert_to_12h(self.alarm_hour,self.alarm_minute)
+                    else:
+                        pass
+                if self.minute_adj.selected:
+                    if self.alarm_minute-1>=0:
+                        self.alarm_minute-=1
+                        str_num = '{:02d}'.format(self.alarm_minute)
+                        if(Clock_s.format_time=="24h"):
+                            self.alarm_disp.text = " "+str(self.alarm_hour)+":"+str_num
+                        else:
+                            self.alarm_disp.text = " "+self.convert_to_12h(self.alarm_hour,self.alarm_minute)
+                    else:
+                        pass
+                if(self.alarmOn.selected):
+                    if(self.is_on == "N"):
+                        self.is_on = "Y"
+                        self.alarm_on.text = "On: " + self.is_on
+                    else:
+                        self.is_on = "N"
+                        self.alarm_on.text = "On: " + self.is_on
+                if(self.volume_adj.selected):
+                    if(self.volume - 1 >= 0):
+                        self.volume -= 1
+                        self.volume_disp.text = " "+str(self.volume)
+                        mySong.duty = self.volume*2000 + 100
+
+
+                display.render(self.icons)
+
+            
+                pass
+            # Reset edge detection flags (reset finite state machine)
+            B_rising_edge = False
+            B_falling_edge = False
+            
+    def B1Handler(self,pin):
+        global current_state, current_posx, current_posy
+        if debounce_handler(pin):
+            if(current_posx <= 0):
+                current_posy-=1
+                current_posx=0
+            if(current_posy==0 and current_posx<=0):
+                current_posx=3
+                current_posy=5
+            if(current_posx!=0):
+                current_posx -= 1
+            self.update()
+            display.render(self.icons)
+            
+    def B2Handler(self,pin):
+        pass
+            
+class PlayALARM(State):
+    def __init__(self):
+        super().__init__()
+        self.ALARM = Icon("ALARM", 1, 2,True)
+        self.Instructions1 = Icon("SNOOZE: CCW", 0,5,False)
+        self.Instructions2 = Icon("OFF: CW", 0,0,False)
+        self.icons = [self.ALARM, self.Instructions1, self.Instructions2]
+        self.start_posx = 1
+        self.start_posy = 0
+    def update(self):
+        display.update_buttons(self.icons)
+    def B1Handler(self,pin):
+        pass
+    def B2Handler(self,pin):
+        pass
+    def ENCA(self,pin):
+        global A_state, A_rising_edge, A_falling_edge, rotation_direction,current_state, Clock_s,SNOOZE, rtc, mySong
+       
+        # Read current state of EncoderA and EncoderB pins
+        A_state = EncoderA.value()
+        B_state = EncoderB.value()
+        
+        # Determine edge detection on EncoderA
+        if A_state == 1 and B_state == 0:
+            A_rising_edge = True
+        elif A_state == 0 and B_state == 1:
+            A_falling_edge = True
+        
+        # Check for both rising and falling edges on EncoderA
+        if A_rising_edge and A_falling_edge:
+            if A_state != B_state:
+               change_state(Clock_s)
+               year, month, day, weekday, hours, minutes, seconds, subseconds = rtc.datetime()
+               if(minutes + Alarm_s.snoozeLength >= 60):
+                   hours+=1
+                   minutes = (minutes + Alarm_s.snoozeLength) % 60
+                   SNOOZE = [year, month, day, weekday, hours, minutes, seconds, subseconds]
+               else:
+                   SNOOZE = [year, month, day, weekday, hours, minutes+Alarm_s.snoozeLength, seconds, subseconds]
     
+            else:
+               pass
+            mySong.stop()
+            # Reset edge detection flags
+            A_rising_edge = False
+            A_falling_edge = False
+            
+    # Interrupt handler for EncoderB pin (optional, if needed)
+    def ENCB(self,pin):
+        global B_state, B_rising_edge, B_falling_edge, rotation_direction, current_state,SNOOZE, mySong
+        # Read current state of EncoderA and EncoderB pins
+        A_state = EncoderA.value()
+        B_state = EncoderB.value()
+        # Determine edge detection on EncoderB
+        if B_state == 1 and A_state == 0:
+            B_rising_edge = True
+        elif B_state == 0 and A_state == 1:
+            B_falling_edge = True
+        # Check for both rising and falling edges on EncoderB
+        if B_rising_edge and B_falling_edge:
+            if A_state == B_state:
+                pass
+            else:
+                #DECREASE LOGIC
+                change_state(Clock_s)
+                SNOOZE = [0,0,0,0,0,0,0,0]
+            mySong.stop()
+            # Reset edge detection flags (reset finite state machine)
+            B_rising_edge = False
+            B_falling_edge = False    
 class ClockRadio:
     def __init__(self):
         global Radio_s, current_state

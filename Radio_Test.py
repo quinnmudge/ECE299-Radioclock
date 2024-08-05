@@ -419,3 +419,18 @@ class ClockRadio:
         state.update()
         pass
            
+display = Display(128,64)
+radio_i2c = I2C(0, sda=Pin(0), scl = Pin(1), freq=100000) # What frequency should we use?
+radio = rda5807.Radio(radio_i2c)
+utime.sleep(1)
+radio.set_frequency_MHz(101.9)
+radio.set_volume(3)
+radio.mute(True)
+radio.update_rds()    
+Menu_s = None
+Radio_s = RadioState()
+Menu_s = MainMenuState()
+#define states used by the clock radio before the clock radio
+current_state = Menu_s
+clock_radio = ClockRadio()
+

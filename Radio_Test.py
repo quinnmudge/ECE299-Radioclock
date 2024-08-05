@@ -154,4 +154,197 @@ class State:
 def update(self):
     pass
 
+class RadioState(State):
+    def __init__(self):
+        super().__init__()
+        global radio, Menu_s
+        #_, _, frequency, _ = radio.GetSettings()
+        self.freq = 101.9
+        self.volume = 1
+        self.is_on = "N"
+        self.stationName = "CFUV"
+        self.radioOn = Button("On: " + self.is_on,1,0,False,True)
+        self.station = Icon(str(self.stationName),1,4,False)
+        self.frequency_text = Icon("Freq:",0,3,False)
+        self.volume_text = Icon("Volume:",0,2,False)
+        self.seek = Button("Seek",0,0,False,True)
+        self.frequ_disp = Button("  "+str(self.freq)+"FM", 1, 3,False, False)
+        self.menu = Button("Menu",0,5,True,True)
+        self.menu.configureState(Menu_s)
+        self.vol_adj = Button("Vol.",1,5,False,True)
+        self.vol_disp = Icon(str(self.volume),2,2,False)
+        self.freq_adj = Button("Freq.",2,5,False,True)
+        self.icons = [self.frequ_disp, self.menu, self.vol_adj, self.freq_adj,self.vol_disp,self.frequency_text, self.volume_text,self.radioOn, self.seek, self.station]
+        self.start_posx = 0
+        self.start_posy = 5
+   
+    def update(self):
+        self.menu.configureState(Menu_s)
+        display.update_buttons(self.icons)
+    
+    def setStationName(self):
+        if (floats_are_equal(self.freq , 101.9)):
+            self.station.text = "CFUV"
+        elif(floats_are_equal(self.freq , 88.9)):
+            self.station.text = "CBUX"
+        elif(floats_are_equal(self.freq , 90.5)):
+            self.station.text = "CBCV"
+        elif(floats_are_equal(self.freq , 91.3)):
+            self.station.text = "CJZN"
+        elif(floats_are_equal(self.freq , 92.1)):
+            self.station.text = "CBU"
+        elif(floats_are_equal(self.freq , 98.5)):
+            self.station.text = "CIOC"
+        elif(floats_are_equal(self.freq , 99.7)):
+            self.station.text = "CBUF"
+        elif(floats_are_equal(self.freq , 100.3)):
+            self.station.text = "CKKQ"
+        elif(floats_are_equal(self.freq , 103.1)):
+            self.station.text = "CHTT"
+        elif(floats_are_equal(self.freq , 106.5)):
+            self.station.text = "KWPZ"
+        elif(floats_are_equal(self.freq , 107.3)):
+            self.station.text = "CHBE"
+        elif(floats_are_equal(self.freq , 107.9)):
+            self.station.text = "CILS"
+        elif(floats_are_equal(self.freq , 104.1)):
+            self.station.text = "KAFE"
+        else:
+            self.station.text = ""
+                
+    
+    def ENCA(self,pin):
+        global A_state, A_rising_edge, A_falling_edge, rotation_direction, radio
+       
+        # Read current state of EncoderA and EncoderB pins
+        A_state = EncoderA.value()
+        B_state = EncoderB.value()
+        
+        # Determine edge detection on EncoderA
+        if A_state == 1 and B_state == 0:
+            A_rising_edge = True
+        elif A_state == 0 and B_state == 1:
+            A_falling_edge = True
+        
+        # Check for both rising and falling edges on EncoderA
+        if A_rising_edge and A_falling_edge:
+            if A_state != B_state:
+                #adjust volume
+                if(self.vol_adj.selected):
+                    if(self.volume+1 <=5): 
+                        radio.set_volume(self.volume+1 ) 
+                        radio.update_rds()
+                        self.volume+=1
+                        self.vol_disp.text = str(self.volume)
+                #turn radio on and off        
+                if(self.radioOn.selected):
+                    if(self.is_on == "N"):
+                        self.is_on = "Y"
+                        self.radioOn.text = "On: " + self.is_on
+                        radio.mute(False)
+                        radio.update_rds()
+                    else:
+                        self.is_on = "N"
+                        self.radioOn.text = "On: " + self.is_on
+                        radio.mute(True)
+                        radio.update_rds()
+                 #adjust frequency       
+                 if(self.freq_adj.selected):
+         
+                   if(self.freq+0.1 <= 108):
+                       radio.set_frequency_MHz(self.freq +0.1)
+                       self.freq +=0.1
+                       radio.update_rds()
+                       # Update the frequency displayed on the icon
+                       self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
+                       self.setStationName()
+                #seek up        
+                if(self.seek.selected):
+                    radio.seek_up()
+                    self.freq = radio.get_frequency_MHz()
+                    self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
+                    self.setStationName() 
+                #render updated information to display    
+                display.render(self.icons)
+            else:
+               pass
+            
+            # Reset edge detection flags
+            A_rising_edge = False
+            A_falling_edge = False
+            
+    # Interrupt handler for EncoderB pin (optional, if needed)
+    def ENCB(self,pin):
+        global B_state, B_rising_edge, B_falling_edge, rotation_direction, radio
+        # Read current state of EncoderA and EncoderB pins
+        A_state = EncoderA.value()
+        B_state = EncoderB.value()
+        
+        # Determine edge detection on EncoderB
+        if B_state == 1 and A_state == 0:
+            B_rising_edge = True
+        elif B_state == 0 and A_state == 1:
+            B_falling_edge = True
+        
+        # Check for both rising and falling edges on EncoderB
+        if B_rising_edge and B_falling_edge:
+            if A_state == B_state:
+                pass
+                
+            else:
+                if(self.freq_adj.selected):
+                    if(self.freq-0.1 >= 88):
+                        radio.set_frequency_MHz(self.freq-0.1)
+                        self.freq-=0.1
+                        radio.update_rds()
+                        # Update the frequency displayed on the icon
+                        self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
+                        self.setStationName()                  
 
+                if(self.vol_adj.selected):
+                    if(self.volume-1 >=0):
+                        radio.set_volume( self.volume-1 )
+                        radio.update_rds()
+                        self.volume-=1
+                        self.vol_disp.text = str(self.volume)
+                if(self.radioOn.selected):
+                    if(self.is_on == "N"):
+                        self.is_on = "Y"
+                        self.radioOn.text = "On: " + self.is_on
+                        radio.mute(False)
+                        radio.update_rds() 
+                    else:
+                        self.is_on = "N"
+                        self.radioOn.text = "On: " + self.is_on
+                        radio.mute(True)
+                        radio.update_rds()
+                if(self.seek.selected):
+                    radio.seek_down()
+                    self.freq = radio.get_frequency_MHz()
+                    self.frequ_disp.text = "  "+f"{self.freq:.1f}"+"FM"
+                    self.setStationName()                    
+
+                display.render(self.icons)
+                
+            # Reset edge detection flags
+            B_rising_edge = False
+            B_falling_edge = False
+ 
+    def B1Handler(self,pin):
+        global current_posx, current_posy
+        if debounce_handler(pin):
+            current_posx -=1
+            if(current_posx<0 and current_posy != 0):
+                current_posx = 1
+                current_posy = 0
+            if(current_posx==-1 and current_posy ==0):
+                current_posx = 2
+                current_posy = 5
+            
+            self.update()
+            display.render(self.icons)
+           
+    def B2Handler(self,pin):
+        pass
+            
+      

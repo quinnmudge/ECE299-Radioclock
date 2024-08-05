@@ -434,3 +434,5 @@ Menu_s = MainMenuState()
 current_state = Menu_s
 clock_radio = ClockRadio()
 
+while True:
+    clock_radio.update(current_state)

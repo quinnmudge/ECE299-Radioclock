@@ -358,3 +358,125 @@ class ClockState(State):
             self.update_time()
             display.render(self.icons)
 
+
+class MainMenuState(State):
+    def __init__(self):
+        super().__init__()
+        global icons
+        self.clock_but = Button("CLOCK", 1, 0, False, True)
+        self.radio_but = Button("RADIO", 1, 2, False, True)
+        self.alarm_but = Button("ALARM", 1, 4, True, True)
+        self.clock_but.configureState(Clock_s)
+        self.radio_but.configureState(Radio_s)
+        self.alarm_but.configureState(Alarm_s)
+        self.icons = [self.radio_but, self.alarm_but, self.clock_but]
+        self.start_posx = 1
+        self.start_posy = 4
+        display.render(self.icons)
+    def update(self):
+        display.update_buttons(self.icons)
+    def B1Handler(self,pin):
+         global current_state, current_posy
+         if debounce_handler(pin):
+            current_posy -= 2
+            if(current_posy<0):
+                current_posy = 4
+            self.update()
+            display.render(self.icons)
+    
+    def ENCA(self,pin):
+        pass
+            
+    # Interrupt handler for EncoderB pin (optional, if needed)
+    def ENCB(self,pin):
+        pass
+
+def debounce_handler(pin):
+    global last_pressed_time
+    current_time = utime.ticks_ms()
+    if current_time - last_pressed_time < debounce_delay:
+        return False
+    last_pressed_time = current_time
+    return pin.value() == 0  # Check if button is pressed
+
+#interrupt handler for the encoder button
+def Enter_Handler(pin):
+    global ENTER, current_state
+    if debounce_handler(pin):
+        ENTER = True
+        
+def change_state(state):
+    global current_state, current_posx, current_posy
+    current_state = state
+    current_posx = current_state.start_posx
+    current_posy = current_state.start_posy
+    EncoderA.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=current_state.ENCA)
+    EncoderB.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=current_state.ENCB)
+    button_1.irq(handler=current_state.B1Handler, trigger=Pin.IRQ_FALLING)
+    current_state.update()
+    display.render(current_state.icons)
+    
+class ClockRadio:
+    def __init__(self):
+        global Radio_s, current_state
+        button_1.irq(handler=current_state.B1Handler, trigger=Pin.IRQ_FALLING)
+        EncoderA.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=current_state.ENCA)
+        EncoderB.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=current_state.ENCB)
+        enter.irq(handler=Enter_Handler, trigger=Pin.IRQ_FALLING)
+
+    def update(self, state):
+        global radio_programming_timer
+        state.update()
+        pass
+     
+    
+display = Display(128,64)
+
+radio_i2c = I2C(0, sda=Pin(0), scl = Pin(1), freq=100000) # What frequency should we use?
+radio = rda5807.Radio(radio_i2c)
+utime.sleep(1)
+radio.set_frequency_MHz(101.9)
+radio.set_volume(3)
+radio.mute(True)
+radio.update_rds()    
+Menu_s = None
+
+Clock_s = State()
+Alarm_s = AlarmState()
+Clock_s = ClockState()
+
+
+
+Radio_s = RadioState()
+Menu_s = MainMenuState()
+#define states used by the clock radio before the clock radio
+current_state = Menu_s
+clock_radio = ClockRadio()
+Playalarm_s = PlayALARM()
+
+#    https://onlinesequencer.net/195547
+song1 = '0 A#4 1 1;2 F5 1 1;4 D#5 1 1;8 D5 1 1;11 D5 1 1;6 A#4 1 1;14 D#5 1 1;18 A#4 1 1;20 D#5 1 1;22 A#4 1 1;24 D5 1 1;27 D5 1 1;30 D#5 1 1;32 A#4 1 1;34 F5 1 1;36 D#5 1 1;38 A#4 1 1;40 D5 1 1;43 D5 1 1;46 D#5 1 1;50 A#4 1 1;52 D#5 1 1;54 G5 1 1;56 F5 1 1;59 D#5 1 1;62 F5 1 1;64 A#4 1 1;66 F5 1 1;68 D#5 1 1;70 A#4 1 1;72 D5 1 1;75 D5 1 1;78 D#5 1 1;82 A#4 1 1;84 D#5 1 1;86 A#4 1 1;88 D5 1 1;91 D5 1 1;94 D#5 1 1;96 A#4 1 1;100 D#5 1 1;102 A#4 1 1;104 D5 1 1;107 D5 1 1;110 D#5 1 1;114 A#4 1 1;116 D#5 1 1;118 G5 1 1;120 F5 1 1;123 D#5 1 1;126 F5 1 1;98 F5 1 1'
+#    https://onlinesequencer.net/1864273
+song2 = '0 D5 4 14;4 A5 4 14;8 C6 4 14;12 B5 4 14;16 G5 2 14;18 F5 2 14;20 E5 2 14;22 F5 2 14;24 G5 8 14;4 E5 8 16;4 C5 8 16;4 F4 8 16;12 D5 8 16;12 B4 8 16;12 E4 8 16;20 C5 8 16;20 A4 8 16;20 D4 8 16;0 E4 4 16;0 B4 4 16;28 E4 4 16;28 B4 4 16'
+#    https://onlinesequencer.net/1864297 - Tetris
+song3 = '0 E3 1 0;2 E4 1 0;4 E3 1 0;6 E4 1 0;8 E3 1 0;10 E4 1 0;12 E3 1 0;14 E4 1 0;16 A3 1 0;18 A4 1 0;20 A3 1 0;22 A4 1 0;24 A3 1 0;26 A4 1 0;28 A3 1 0;30 A4 1 0;32 G#3 1 0;34 G#4 1 0;36 G#3 1 0;38 G#4 1 0;40 E3 1 0;42 E4 1 0;44 E3 1 0;46 E4 1 0;48 A3 1 0;50 A4 1 0;52 A3 1 0;54 A4 1 0;56 A3 1 0;58 B3 1 0;60 C4 1 0;62 D4 1 0;64 D3 1 0;66 D4 1 0;68 D3 1 0;70 D4 1 0;72 D3 1 0;74 D4 1 0;76 D3 1 0;78 D4 1 0;80 C3 1 0;82 C4 1 0;84 C3 1 0;86 C4 1 0;88 C3 1 0;90 C4 1 0;92 C3 1 0;94 C4 1 0;96 G2 1 0;98 G3 1 0;100 G2 1 0;102 G3 1 0;104 E3 1 0;106 E4 1 0;108 E3 1 0;110 E4 1 0;114 A4 1 0;112 A3 1 0;116 A3 1 0;118 A4 1 0;120 A3 1 0;122 A4 1 0;124 A3 1 0;0 E6 1 1;4 B5 1 1;6 C6 1 1;8 D6 1 1;10 E6 1 1;11 D6 1 1;12 C6 1 1;14 B5 1 1;0 E5 1 6;4 B4 1 6;6 C5 1 6;8 D5 1 6;10 E5 1 6;11 D5 1 6;12 C5 1 6;14 B4 1 6;16 A5 1 1;20 A5 1 1;22 C6 1 1;24 E6 1 1;28 D6 1 1;30 C6 1 1;32 B5 1 1;36 B5 1 1;36 B5 1 1;37 B5 1 1;38 C6 1 1;40 D6 1 1;44 E6 1 1;48 C6 1 1;52 A5 1 1;56 A5 1 1;20 A4 1 6;16 A4 1 6;22 C5 1 6;24 E5 1 6;28 D5 1 6;30 C5 1 6;32 B4 1 6;36 B4 1 6;37 B4 1 6;38 C5 1 6;40 D5 1 6;44 E5 1 6;48 C5 1 6;52 A4 1 6;56 A4 1 6;64 D5 1 6;64 D6 1 1;68 D6 1 1;70 F6 1 1;72 A6 1 1;76 G6 1 1;78 F6 1 1;80 E6 1 1;84 E6 1 1;86 C6 1 1;88 E6 1 1;92 D6 1 1;94 C6 1 1;96 B5 1 1;100 B5 1 1;101 B5 1 1;102 C6 1 1;104 D6 1 1;108 E6 1 1;112 C6 1 1;116 A5 1 1;120 A5 1 1;72 A5 1 6;80 E5 1 6;68 D5 1 7;70 F5 1 7;76 G5 1 7;84 E5 1 7;78 F5 1 7;86 C5 1 7;88 E5 1 6;96 B4 1 6;104 D5 1 6;112 C5 1 6;120 A4 1 6;92 D5 1 7;94 C5 1 7;100 B4 1 7;101 B4 1 7;102 C5 1 7;108 E5 1 7;116 A4 1 7'
+songs = [song1, song2, song3]
+mySong = music(songs[Alarm_s.song_id-1], pins=[Pin(26)])
+
+def check_for_alarm():
+    global current_state, current_posx, current_posy, Playalarm_s
+    if((Alarm_s.alarm_hour==rtc.datetime()[4] and Alarm_s.alarm_minute == rtc.datetime()[5] and rtc.datetime()[6]==0  and Alarm_s.is_on=="Y") or (SNOOZE[0] == rtc.datetime()[0] and SNOOZE[1] == rtc.datetime()[1] and SNOOZE[2] == rtc.datetime()[2] and SNOOZE[3] == rtc.datetime()[3] and SNOOZE[4] == rtc.datetime()[4] and  SNOOZE[5] == rtc.datetime()[5] and SNOOZE[6] == rtc.datetime()[6])):
+       change_state(Playalarm_s)
+       mySong.resume()
+while True:
+    clock_radio.update(current_state)
+    check_for_alarm()
+    #play the alarm
+    if(isinstance(current_state,PlayALARM)):
+        radio.mute(True)
+        radio.update_rds()
+        mySong.tick()
+        sleep(0.04)       
+        if(Radio_s.is_on =="Y"):
+            radio.mute(False)
+            radio.update_rds()

@@ -1,3 +1,33 @@
+from machine import Pin, SPI, I2C, RTC, Timer, PWM
+from buzzer_music import music
+from time import sleep
+import ssd1306
+import utime
+import rda5807
+EncoderA = machine.Pin(27, machine.Pin.IN, machine.Pin.PULL_UP)
+EncoderB = machine.Pin(28, machine.Pin.IN, machine.Pin.PULL_UP)
+machine.Pin(23, machine.Pin.OUT)
+# Initialize variables to keep track of encoder state
+A_state = 0
+B_state = 0
+A_rising_edge = False
+A_falling_edge = False
+B_rising_edge = False
+B_falling_edge = False
+rotation_direction = 0  # 1 for clockwise, -1 for counterclockwise
+
+current_posx = 1
+current_posy = 4
+# Interrupt handler for EncoderA pin
+
+grid_size_x = 42
+grid_size_y = 10
+ENTER = False
+
+
+# Define button pins
+button_1 = Pin(13, Pin.IN, Pin.PULL_DOWN)  # Button for moving left
+enter = Pin(5, Pin.IN, Pin.PULL_DOWN)     # Button for enter
 class Icon:
     def __init__(self, txt, pos_x, pos_y, border):
         #text displayed by the icon
@@ -314,3 +344,4 @@ class ClockState(State):
             B_falling_edge = False
             self.update_time()
             display.render(self.icons)
+

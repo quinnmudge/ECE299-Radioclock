@@ -347,4 +347,75 @@ class RadioState(State):
     def B2Handler(self,pin):
         pass
             
-      
+           
+            
+class MainMenuState(State):
+    def __init__(self):
+        super().__init__()
+        global icons
+        self.clock_but = Button("CLOCK", 1, 0, False, True)
+        self.radio_but = Button("RADIO", 1, 2, False, True)
+        self.alarm_but = Button("ALARM", 1, 4, True, True)
+        self.clock_but.configureState(Clock_s)
+        self.radio_but.configureState(Radio_s)
+        self.alarm_but.configureState(Alarm_s)
+        self.icons = [self.radio_but, self.alarm_but, self.clock_but]
+        self.start_posx = 1
+        self.start_posy = 4
+        display.render(self.icons)
+    def update(self):
+        display.update_buttons(self.icons)
+    def B1Handler(self,pin):
+         global current_state, current_posy
+         if debounce_handler(pin):
+            current_posy -= 2
+            if(current_posy<0):
+                current_posy = 4
+            self.update()
+            display.render(self.icons)
+    
+    def ENCA(self,pin):
+        pass
+            
+    # Interrupt handler for EncoderB pin (optional, if needed)
+    def ENCB(self,pin):
+        pass
+
+def debounce_handler(pin):
+    global last_pressed_time
+    current_time = utime.ticks_ms()
+    if current_time - last_pressed_time < debounce_delay:
+        return False
+    last_pressed_time = current_time
+    return pin.value() == 0  # Check if button is pressed
+
+#interrupt handler for the encoder button
+def Enter_Handler(pin):
+    global ENTER, current_state
+    if debounce_handler(pin):
+        ENTER = True
+        
+def change_state(state):
+    global current_state, current_posx, current_posy
+    current_state = state
+    current_posx = current_state.start_posx
+    current_posy = current_state.start_posy
+    EncoderA.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=current_state.ENCA)
+    EncoderB.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=current_state.ENCB)
+    button_1.irq(handler=current_state.B1Handler, trigger=Pin.IRQ_FALLING)
+    current_state.update()
+    display.render(current_state.icons)
+    
+class ClockRadio:
+    def __init__(self):
+        global Radio_s, current_state
+        button_1.irq(handler=current_state.B1Handler, trigger=Pin.IRQ_FALLING)
+        EncoderA.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=current_state.ENCA)
+        EncoderB.irq(trigger=machine.Pin.IRQ_RISING | machine.Pin.IRQ_FALLING, handler=current_state.ENCB)
+        enter.irq(handler=Enter_Handler, trigger=Pin.IRQ_FALLING)
+
+    def update(self, state):
+        global radio_programming_timer
+        state.update()
+        pass
+           

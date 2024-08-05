@@ -28,7 +28,6 @@ ENTER = False
 
 # Define button pins
 button_1 = Pin(13, Pin.IN, Pin.PULL_DOWN)  # Button for moving left
-button_2 = Pin(12, Pin.IN, Pin.PULL_DOWN)  # Button for moving right
 enter = Pin(5, Pin.IN, Pin.PULL_DOWN)     # Button for enter
 
 # Debouncing variables
